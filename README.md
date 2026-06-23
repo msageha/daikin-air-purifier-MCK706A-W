@@ -46,17 +46,16 @@ POST http://<host>/dsiot/multireq
 | **暫定** | `mode`（0..5） `fan_rate`（0..7） | 範囲は判明、ラベルは未確定のため生の整数で公開 |
 | **未マップ** | `monitors.*`（PM2.5/ホコリ/ニオイ相当） | 値は変動するが単位未確定。生のデコード値を公開 |
 
-未マップのセンサーを特定したい場合は `make probe`（読み取りのみ）で、一定間隔で
-ポーリングして「変動するフィールド」を炙り出せます。例えばニオイセンサーの近くで
-息を吹きかけ、どの `e_*/p_*` が動くかを観察して対応付けます。完全な復号済みツリーは
-`GET /api/tree` で常に確認できます。
+未マップのセンサーを特定したい場合は、`GET /api/tree` で完全な復号済みツリーを
+取得し、一定間隔でポーリングして「変動するフィールド」を炙り出せます。例えば
+ニオイセンサーの近くで息を吹きかけ、どの `e_*/p_*` が動くかを観察して対応付けます。
 
 ## セットアップ
 
 `.env` に接続先を記載します（デフォルトのままでも可）。
 
 ```dotenv
-DAIKIN_HOST=http://172.16.1.114
+DAIKIN_HOST=http://192.168.1.100
 TIMEOUT=10
 ```
 
@@ -80,8 +79,7 @@ src/
   api/       FastAPI Web 層: routes.py / schemas.py / service.py
   config.py  Settings（pydantic-settings）
   main.py    FastAPI アプリ
-tests/       オフライン単体テスト（daikin.protocol・api.schemas）
-scripts/     smoke.py(疎通) / probe.py(変動フィールド探索)
+tests/       オフライン単体テスト（daikin.protocol・api.schemas・daikin.client）
 ```
 
 ## 起動
@@ -175,8 +173,6 @@ make precommit           # 全ファイルに対して実行
 
 ```bash
 make test                  # uv run coverage run -m pytest + report
-make smoke                 # 実機への疎通スモーク（読み取りのみ）
-make probe                 # 変動フィールド探索（読み取りのみ）
 ```
 
 `.claude/verify.sh` は Stop hook 用で、オフラインで `ruff format --check` +

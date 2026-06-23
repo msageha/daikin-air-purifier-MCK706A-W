@@ -32,15 +32,6 @@ check:
 	uv run ruff check .
 	uv run ty check .
 
-# Live diagnostics against the real unit (read-only). Need src on PYTHONPATH.
-.PHONY: smoke
-smoke:
-	PYTHONPATH=src uv run python -m scripts.smoke
-
-.PHONY: probe
-probe:
-	PYTHONPATH=src uv run python -m scripts.probe
-
 .PHONY: build-image
 build-image:
 	docker build -t daikin-mck706a-api:latest .
