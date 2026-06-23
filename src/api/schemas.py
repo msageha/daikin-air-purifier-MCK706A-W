@@ -5,8 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DeviceInfo(BaseModel):
-    """Adapter / device identity, decoded from edge.adp_i + edge.adp_d."""
-
     name: str | None = Field(
         default=None,
         description="User-assigned device name (edge.adp_d 'name')",
@@ -51,14 +49,6 @@ class DeviceInfo(BaseModel):
 
 
 class AirStatus(BaseModel):
-    """Current air / operating state.
-
-    ``power`` / ``temperature_c`` / ``humidity_pct`` are confidently decoded.
-    ``mode`` / ``fan_rate`` are raw integers (label not publicly documented for
-    the MCK line). ``monitors`` holds decoded air-quality sensor values whose
-    exact units are not yet mapped; see ``GET /api/tree`` for the full state.
-    """
-
     power: bool | None = Field(
         default=None, description="Purifier on/off", examples=[True]
     )
@@ -87,9 +77,21 @@ class PowerRequest(BaseModel):
     )
 
 
-class ReadRequest(BaseModel):
-    """Generic dsiot read passthrough."""
+_HEX_RE = re.compile(r"^([0-9a-fA-F]{2})+$")
+_ENTITY_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
+
+def _validate_dsiot_address(value: str, *, must_reference_container: bool = False) -> str:
+    if not value.startswith("/dsiot/") or ".." in value or "://" in value:
+        raise ValueError(f"invalid dsiot address: {value!r}")
+    if must_reference_container and "." not in value.rsplit("/", 1)[-1]:
+        raise ValueError(
+            "address must reference a container, e.g. '...adr_0100.dgc_status'"
+        )
+    return value
+
+
+class ReadRequest(BaseModel):
     targets: list[str] = Field(
         description="dsiot addresses to read",
         examples=[["/dsiot/edge/adr_0100.dgc_status", "/dsiot/edge.adp_i"]],
@@ -101,24 +103,11 @@ class ReadRequest(BaseModel):
         if not v:
             raise ValueError("targets must not be empty")
         for t in v:
-            if not t.startswith("/dsiot/"):
-                raise ValueError(f"target must start with '/dsiot/': {t!r}")
-            if ".." in t or "://" in t:
-                raise ValueError(f"invalid target: {t!r}")
+            _validate_dsiot_address(t)
         return v
 
 
-_HEX_RE = re.compile(r"^([0-9a-fA-F]{2})+$")
-
-
 class WriteRequest(BaseModel):
-    """Generic dsiot write passthrough (``op:3``).
-
-    Powerful escape hatch: this changes appliance state. ``entity_path`` is the
-    chain of property names from the response root to the target leaf, and
-    ``pv`` is the little-endian hex value to store.
-    """
-
     model_config = ConfigDict(extra="forbid")
 
     to: str = Field(
@@ -135,13 +124,7 @@ class WriteRequest(BaseModel):
     @field_validator("to")
     @classmethod
     def _validate_to(cls, v: str) -> str:
-        if not v.startswith("/dsiot/") or ".." in v or "://" in v:
-            raise ValueError(f"invalid 'to' address: {v!r}")
-        if "." not in v.rsplit("/", 1)[-1]:
-            raise ValueError(
-                "'to' must reference a container, e.g. '...adr_0100.dgc_status'"
-            )
-        return v
+        return _validate_dsiot_address(v, must_reference_container=True)
 
     @field_validator("entity_path")
     @classmethod
@@ -149,7 +132,7 @@ class WriteRequest(BaseModel):
         if not v:
             raise ValueError("entity_path must not be empty")
         for seg in v:
-            if not re.fullmatch(r"[A-Za-z0-9_]+", seg):
+            if not _ENTITY_SEGMENT_RE.fullmatch(seg):
                 raise ValueError(f"invalid entity_path segment: {seg!r}")
         return v
 
@@ -162,8 +145,6 @@ class WriteRequest(BaseModel):
 
 
 class LeafValue(BaseModel):
-    """One decoded leaf of the status tree."""
-
     model_config = ConfigDict(extra="allow")
 
     pv: Any = Field(

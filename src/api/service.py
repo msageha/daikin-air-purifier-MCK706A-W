@@ -9,13 +9,6 @@ T = TypeVar("T")
 
 
 class DaikinService:
-    """Async-friendly wrapper around the synchronous DaikinClient.
-
-    The client holds a requests.Session and is not safe for concurrent use, so
-    calls are serialized behind a lock and run in a worker thread to keep the
-    event loop responsive.
-    """
-
     def __init__(self, settings: Settings) -> None:
         self.client = DaikinClient(settings.daikin_host, timeout=settings.timeout)
         self._lock = asyncio.Lock()

@@ -37,7 +37,6 @@ async def status(service: DaikinService = Depends(get_service)) -> AirStatus:
 
 @router.get("/tree", tags=["status"])
 async def tree(service: DaikinService = Depends(get_service)) -> dict[str, Any]:
-    """Full decoded ``adr_0100.dgc_status`` tree (every leaf, decoded)."""
     return await service.run(service.client.status_tree)
 
 
@@ -46,7 +45,6 @@ async def read(
     body: ReadRequest,
     service: DaikinService = Depends(get_service),
 ) -> dict[str, Any]:
-    """Read arbitrary dsiot addresses and return the raw responses by address."""
     return await service.run(service.client.read, body.targets)
 
 
@@ -55,7 +53,6 @@ async def write(
     body: WriteRequest,
     service: DaikinService = Depends(get_service),
 ) -> dict[str, Any]:
-    """Write a single dsiot property. Changes appliance state; needs confirm."""
     if not body.confirm:
         raise HTTPException(
             status_code=400, detail="Set confirm=true to write to the unit"
@@ -72,6 +69,5 @@ async def power(
     body: PowerRequest,
     service: DaikinService = Depends(get_service),
 ) -> dict[str, Any]:
-    """Turn the purifier on or off."""
     await service.run(service.client.set_power, body.on)
     return {"power": body.on}
