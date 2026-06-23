@@ -81,7 +81,9 @@ _HEX_RE = re.compile(r"^([0-9a-fA-F]{2})+$")
 _ENTITY_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
 
-def _validate_dsiot_address(value: str, *, must_reference_container: bool = False) -> str:
+def _validate_dsiot_address(
+    value: str, *, must_reference_container: bool = False
+) -> str:
     if not value.startswith("/dsiot/") or ".." in value or "://" in value:
         raise ValueError(f"invalid dsiot address: {value!r}")
     if must_reference_container and "." not in value.rsplit("/", 1)[-1]:
