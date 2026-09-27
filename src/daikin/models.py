@@ -1,15 +1,61 @@
-"""DaikinClient が返す復号済みの値。pydantic モデルなので FastAPI の応答にそのまま使える。"""
+"""DaikinClient が返す復号済みの値。pydantic モデルなので FastAPI の応答にそのまま使える。
 
+コース・風量・湿度設定のラベルは公式 DAIKIN Smart App (GPFCjConvertValue /
+strings.xml) の空気清浄機向け定義に合わせている。wire 値との対応は client.py が持つ。
+"""
+
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
+class Course(StrEnum):
+    """運転コース (アプリの「コース」)。定義順が dsiot の wire 値 (0 始まり)。"""
+
+    SMART = "smart"
+    MANUAL = "manual"
+    AUTO_FAN = "auto_fan"
+    ECONO = "econo"
+    POLLEN = "pollen"
+    MOIST = "moist"
+    CIRCULATOR = "circulator"
+    LAUNDRY_DRY = "laundry_dry"
+    NIGHT_LAUNDRY_DRY = "night_laundry_dry"
+    WATER_DEODORIZE = "water_deodorize"
+    INTERNAL_DRY = "internal_dry"
+
+
+class FanSpeed(StrEnum):
+    """手動コースの風量。定義順が dsiot の wire 値 (0 始まり)。"""
+
+    QUIET = "quiet"
+    LOW = "low"
+    STANDARD = "standard"
+    HIGH = "high"
+    TURBO = "turbo"
+
+
+class HumiditySetting(StrEnum):
+    """加湿運転時の湿度設定。定義順が dsiot の wire 値 (0 始まり)。"""
+
+    OFF = "off"
+    LOW = "low"
+    STANDARD = "standard"
+    HIGH = "high"
+    CONTINUOUS = "continuous"
+
+
 class DeviceInfo(BaseModel):
-    """edge.adp_i (アダプタ情報) と edge.adp_d (ユーザー設定) から集めた機器情報。"""
+    """edge.adp_i / adp_d / adp_r / dev_i から集めた機器・アダプタ情報。"""
 
     name: str | None = Field(
         default=None, description="ユーザーが付けた機器名", examples=["MCK706A"]
+    )
+    device_type: str | None = Field(
+        default=None,
+        description="dsiot の機器種別コード (1D = 空気清浄機、RA = ルームエアコン)",
+        examples=["1D"],
     )
     mac: str | None = Field(
         default=None,
@@ -23,7 +69,17 @@ class DeviceInfo(BaseModel):
     )
     revision: str | None = Field(default=None, description="ファームウェアのリビジョン")
     region: str | None = Field(default=None, description="地域コード", examples=["jp"])
-    ssid: str | None = Field(default=None, description="接続中の Wi-Fi SSID")
+    ssid: str | None = Field(
+        default=None,
+        description="アダプタ自身がセットアップ用に出すアクセスポイントの SSID",
+        examples=["DaikinAP12345"],
+    )
+    wlan_ssid: str | None = Field(
+        default=None, description="アダプタが接続している Wi-Fi の SSID"
+    )
+    wlan_rssi_dbm: int | None = Field(
+        default=None, description="接続中 Wi-Fi の受信強度 (dBm)", examples=[-46]
+    )
     api_ver: str | None = Field(
         default=None,
         description="本体が公開する dsiot API のバージョン",
@@ -41,25 +97,69 @@ class AirStatus(BaseModel):
     """adr_0100.dgc_status から復号した運転状態とセンサー値。"""
 
     power: bool | None = Field(default=None, description="運転中か", examples=[True])
+    humidify: bool | None = Field(
+        default=None,
+        description="運転切替。true = 加湿 + 空気清浄、false = 空気清浄のみ",
+        examples=[False],
+    )
+    course: Course | None = Field(
+        default=None,
+        description="現在の運転切替 (humidify) 側で選ばれているコース",
+        examples=[Course.SMART],
+    )
+    fan_speed: FanSpeed | None = Field(
+        default=None,
+        description="手動コース (manual) のときに使われる風量。他のコースでは無視される設定値",
+        examples=[FanSpeed.STANDARD],
+    )
+    humidity_setting: HumiditySetting | None = Field(
+        default=None,
+        description="加湿側 (humidify が true のときに使われる) コースに対する湿度設定。そのコースが smart / moist のときは自動なので None",
+        examples=[HumiditySetting.LOW],
+    )
     temperature_c: float | None = Field(
         default=None, description="室温 (℃)", examples=[24.5]
     )
     humidity_pct: int | None = Field(
         default=None, description="相対湿度 (%)", examples=[45]
     )
-    mode: int | None = Field(
-        default=None,
-        description="運転モード。生の値 (実機で観測した範囲は 0..5) で、ラベルは未確定",
-        examples=[0],
+    pm25_level: int | None = Field(
+        default=None, description="PM2.5 の汚れレベル (0 = きれい 〜 5)", examples=[0]
     )
-    fan_rate: int | None = Field(
-        default=None,
-        description="風量。生の値 (実機で観測した範囲は 0..7)",
-        examples=[3],
+    dust_level: int | None = Field(
+        default=None, description="ホコリの汚れレベル (0 = きれい 〜 5)", examples=[0]
     )
-    monitors: dict[str, int | None] = Field(
-        default_factory=dict,
-        description="空気質モニターの復号値。単位・意味は未特定",
+    odor_level: int | None = Field(
+        default=None, description="ニオイの強さレベル (0 = なし 〜 5)", examples=[0]
+    )
+    pm25_raw: int | None = Field(
+        default=None,
+        description="PM2.5 センサーの生値。アプリの履歴グラフの元値と推定され、単位は未特定",
+    )
+    dust_raw: int | None = Field(
+        default=None,
+        description="ホコリセンサーの生値。アプリの履歴グラフの元値と推定され、単位は未特定",
+    )
+    odor_raw: int | None = Field(
+        default=None,
+        description="ニオイセンサーの生値。アプリの履歴グラフの元値と推定され、単位は未特定",
+    )
+    water_supply_sign: bool | None = Field(
+        default=None, description="給水サイン (加湿タンクが空)"
+    )
+    filter_drying: bool | None = Field(
+        default=None, description="加湿フィルター乾燥運転中か"
+    )
+    deodorizing_filter_off_sign: bool | None = Field(
+        default=None, description="脱臭フィルター外れサイン"
+    )
+    streamer_maintenance_sign: bool | None = Field(
+        default=None, description="ストリーマユニットのお手入れサイン"
+    )
+    error_code: str | None = Field(
+        default=None,
+        description="本体のエラーコード。'00-00' は正常",
+        examples=["00-00"],
     )
 
 
@@ -88,7 +188,8 @@ class DecodedLeaf(BaseModel):
         default=None, description="本体が示す下限 (md.mi)。通常は 16 進文字列"
     )
     max: Any = Field(
-        default=None, description="本体が示す上限 (md.mx)。通常は 16 進文字列"
+        default=None,
+        description="本体が示す上限 (md.mx)。通常は 16 進文字列。列挙型のプロパティでは対応値のビットマスク",
     )
     ascii: str | None = Field(
         default=None,

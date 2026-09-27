@@ -8,3 +8,7 @@ class DaikinError(Exception):
 
 class DaikinConnectionError(DaikinError):
     """本体へ到達できない (タイムアウト・接続拒否など)。"""
+
+
+class DaikinUnsupportedError(DaikinError):
+    """本体の対応範囲 (md.mx) や現在の運転状態では行えない操作。"""
