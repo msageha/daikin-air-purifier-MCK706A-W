@@ -239,24 +239,6 @@ required status check の名前になります。
 main への push では実行しません（main は PR 必須で、変更は PR の CI で検証してから merge されます）。
 workflow の外部依存（`uses:`）は commit SHA で固定し、バージョンをコメントで併記します。
 
-### Claude Code
-
-- `claude.yaml`: issue / PR コメント等の `@claude` メンションで
-  [claude-code-action](https://github.com/anthropics/claude-code-action) を起動します。`author_association` が
-  OWNER / MEMBER のメンションだけを通します。
-- `claude-sweep.yaml`: 毎週月曜に、前回レビュー済み地点（tag `claude-reviewed`）から HEAD までの差分を
-  correctness / security / simplification の観点でレビューし、新規の指摘を `claude-sweep` label 付きの issue として
-  起票します。修正 PR は作りません。tag が無い初回は tag を張るだけで終了し、差分が無ければ Claude を起動しません。
-  `workflow_dispatch` で手動実行できます。
-
-実行にはリポジトリ secret `CLAUDE_CODE_OAUTH_TOKEN` が必要です。未設定のまま workflow が動くと
-`CLAUDE_CODE_OAUTH_TOKEN ... is required` で失敗します。
-
-```sh
-claude setup-token   # Claude Code の OAuth トークンを発行
-gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo msageha/daikin-air-purifier-MCK706A-W
-```
-
 ### GitHub リポジトリ設定
 
 ファイルとして管理できないリポジトリ設定です。public リポジトリなので ruleset と secret scanning が使えます。
@@ -330,6 +312,8 @@ JSON
 [dope-corp/template](https://github.com/dope-corp/template) から取り込んでいます。`mise run template-diff` で
 template の main と比較して unified diff を表示します。差分にはこのリポジトリ固有の変更（Python 向け hook・
 `verify` job・issue form の `labels:` 等）も混ざるので、取り込むものは手で選んでください。
+template の `claude.yaml` / `claude-sweep.yaml`（GitHub 上で Claude Code を動かす workflow）は、
+このリポジトリでは使わないため取り込んでいません。
 
 ## 仕組み
 
