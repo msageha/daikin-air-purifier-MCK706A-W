@@ -7,20 +7,19 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.110",
-    "uvicorn[standard]>=0.50.2",
-    "pydantic>=2.6",
-    "pydantic-settings>=2.2",
-    "requests>=2.31",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.50.2",
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "requests>=2.31",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8",
-    "coverage>=7.15.0",
-    "ruff>=0.15.20",
-    "ty>=0.0.1a1",
-    "pre-commit>=3.7",
+  "pytest>=8",
+  "coverage>=7.15.0",
+  "ruff>=0.15.20",
+  "ty>=0.0.1a1",
 ]
 
 [tool.uv]
