@@ -20,7 +20,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1
 
-USER appuser
+USER 10001
 EXPOSE 8000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
