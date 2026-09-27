@@ -1,3 +1,4 @@
 from .routes import router
+from .service import DaikinService
 
-__all__ = ["router"]
+__all__ = ["DaikinService", "router"]

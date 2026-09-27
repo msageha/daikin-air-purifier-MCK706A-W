@@ -3,16 +3,13 @@ import pytest
 from daikin.protocol import (
     OP_READ,
     OP_WRITE,
+    PropertyTree,
     build_read_requests,
     build_write_request,
-    flatten,
     hex_to_ascii,
     hex_to_int,
     hex_to_temp,
-    leaf_pv,
 )
-
-pytestmark = pytest.mark.unit
 
 
 def test_hex_to_int_little_endian():
@@ -67,25 +64,27 @@ SAMPLE_PC = {
 }
 
 
-def test_flatten_builds_dotted_paths():
-    flat = flatten(SAMPLE_PC)
-    assert set(flat) == {
+def test_property_tree_builds_slash_paths():
+    tree = PropertyTree(SAMPLE_PC)
+    assert set(tree.leaves) == {
         "e_1002/e_A002/p_01",
         "e_1002/e_A00B/p_01",
         "e_1002/e_A00B/p_02",
     }
-    assert flat["e_1002/e_A00B/p_01"]["pv"] == "3000"
+    assert tree.leaves["e_1002/e_A00B/p_01"]["pv"] == "3000"
 
 
-def test_flatten_empty():
-    assert flatten(None) == {}
-    assert flatten({}) == {}
+def test_property_tree_empty():
+    assert PropertyTree({}).leaves == {}
+    assert PropertyTree({"pn": "dgc_status", "pt": 1, "pch": []}).leaves == {}
 
 
-def test_leaf_pv():
-    flat = flatten(SAMPLE_PC)
-    assert leaf_pv(flat, "e_1002/e_A002/p_01") == "01"
-    assert leaf_pv(flat, "nope") is None
+def test_property_tree_pv_and_decode():
+    tree = PropertyTree(SAMPLE_PC)
+    assert tree.pv("e_1002/e_A002/p_01") == "01"
+    assert tree.pv("nope") is None
+    assert tree.decode("e_1002/e_A00B/p_01", hex_to_temp) == 24.0
+    assert tree.decode("nope", hex_to_int) is None
 
 
 def test_build_read_requests():

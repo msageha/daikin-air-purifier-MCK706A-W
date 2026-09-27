@@ -14,18 +14,10 @@ dependencies = [
     "requests>=2.31",
 ]
 
-[project.optional-dependencies]
-test = [
-    "pytest>=8",
-    "coverage>=7.15.0",
-    "httpx>=0.27.0",
-]
-
 [dependency-groups]
 dev = [
     "pytest>=8",
     "coverage>=7.15.0",
-    "httpx>=0.27.0",
     "ruff>=0.15.20",
     "ty>=0.0.1a1",
     "pre-commit>=3.7",
@@ -36,70 +28,24 @@ package = false
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
-src = ["src", "tests", "scripts"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["C", "E", "F", "I", "N", "NPY", "PD", "UP", "W"]
-ignore = ["E203", "E501", "N803"]
-
-[tool.ruff.lint.mccabe]
-max-complexity = 15
+select = ["C", "E", "F", "I", "N", "UP", "W"]
+# 行長は formatter に任せる。
+ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party = ["api", "config", "daikin", "main"]
-section-order = [
-    "future",
-    "standard-library",
-    "third-party",
-    "first-party",
-    "local-folder",
-]
-split-on-trailing-comma = true
-
-[tool.ty.src]
-# ty checks the app source. Diagnostic scripts poke at private client internals,
-# and tests intentionally exercise pydantic's runtime coercion, which conflicts
-# with static argument typing.
-exclude = ["scripts/", "tests/"]
-
-[tool.ty.rules]
-unresolved-import = "ignore"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-    "--showlocals",
-    "--tb=short",
-]
-markers = [
-    "unit: Unit tests that don't require external dependencies",
-    "integration: Integration tests that may require a live device",
-]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--tb=short"]
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["*/tests/*", "*/__pycache__/*"]
 branch = true
 
 [tool.coverage.report]
-precision = 2
 show_missing = true
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-]

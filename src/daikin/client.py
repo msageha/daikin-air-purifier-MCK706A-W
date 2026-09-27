@@ -1,188 +1,179 @@
-from __future__ import annotations
+"""DaikinClient: multireq による読み書きと、MCK706A 固有のアドレス・プロパティパス。"""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import requests
+from pydantic import ValidationError
 
 from .exceptions import DaikinConnectionError, DaikinError
+from .models import AirStatus, DecodedLeaf, DeviceInfo
 from .protocol import (
     RSC_OK,
+    PropertyTree,
     build_read_requests,
     build_write_request,
-    flatten,
     hex_to_ascii,
+    hex_to_bool,
     hex_to_int,
     hex_to_temp,
-    leaf_pv,
+    int_to_bool,
 )
 
+# dgc_status が制御とセンサー、adp_i がアダプタ情報、adp_d がユーザー設定。
 ADDR_STATUS = "/dsiot/edge/adr_0100.dgc_status"
-ADDR_STATUS2 = "/dsiot/edge/adr_0200.dgc_status"
 ADDR_INFO = "/dsiot/edge.adp_i"
 ADDR_DEVICE = "/dsiot/edge.adp_d"
 
-P_POWER = "e_1002/e_A002/p_01"
-P_TEMPERATURE = "e_1002/e_A00B/p_01"
-P_HUMIDITY = "e_1002/e_A00B/p_02"
-P_MODE = "e_1002/e_3001/p_3F"
-P_FAN_RATE = "e_1002/e_3007/p_32"
-
-MONITORS = {
+# dgc_status 配下のプロパティパス。実機 (FW 3_15_0) の解析結果で、
+# power / temperature / humidity 以外の意味は暫定。
+POWER_PATH = "e_1002/e_A002/p_01"
+TEMPERATURE_PATH = "e_1002/e_A00B/p_01"
+HUMIDITY_PATH = "e_1002/e_A00B/p_02"
+MODE_PATH = "e_1002/e_3001/p_3F"
+FAN_RATE_PATH = "e_1002/e_3007/p_32"
+MONITOR_PATHS = {
     "monitor_a": "e_1002/e_3007/p_3A",
     "monitor_b": "e_1002/e_3007/p_3B",
     "pm_a": "e_1002/e_205E/p_01",
     "pm_b": "e_1002/e_205E/p_02",
 }
 
-AIR_FIELDS: dict[str, tuple[str, Callable[[str], Any]]] = {
-    "power": (P_POWER, lambda v: _as_bool(hex_to_int(v))),
-    "temperature_c": (P_TEMPERATURE, hex_to_temp),
-    "humidity_pct": (P_HUMIDITY, hex_to_int),
-    "mode": (P_MODE, hex_to_int),
-    "fan_rate": (P_FAN_RATE, hex_to_int),
-}
-
 
 class DaikinClient:
+    """1 台の空気清浄機に対する同期クライアント。Session を共有するので並行利用はできない。"""
+
     def __init__(self, host: str, *, timeout: int = 10) -> None:
         self.host = host.rstrip("/")
-        self.timeout = timeout
+        self._timeout = timeout
         self._session = requests.Session()
 
+    def close(self) -> None:
+        self._session.close()
+
     def _multireq(self, body: dict[str, Any]) -> list[dict[str, Any]]:
+        """/dsiot/multireq に本文を送り、responses 配列を返す。
+
+        Raises:
+            DaikinConnectionError: 本体へ到達できない。
+            DaikinError: HTTP status が 2xx でない、または応答が multireq の形をしていない。
+        """
         url = f"{self.host}/dsiot/multireq"
         try:
-            resp = self._session.post(
-                url,
-                json=body,
-                timeout=self.timeout,
-                headers={"Content-Type": "application/json"},
-            )
-        except requests.exceptions.RequestException as err:
+            resp = self._session.post(url, json=body, timeout=self._timeout)
+        except requests.RequestException as err:
             raise DaikinConnectionError(
                 f"Cannot reach Daikin unit at {self.host}: {err}"
             ) from err
-
+        if not 200 <= resp.status_code < 300:
+            raise DaikinError(f"HTTP {resp.status_code} from {url}: {resp.text[:200]}")
         try:
             payload = resp.json()
         except ValueError as err:
             raise DaikinError(
                 f"Non-JSON response from {url}: {resp.text[:200]}"
             ) from err
-
-        responses = payload.get("responses")
-        if not isinstance(responses, list):
+        responses = payload.get("responses") if isinstance(payload, dict) else None
+        is_multireq = isinstance(responses, list) and all(
+            isinstance(r, dict) for r in responses
+        )
+        if not is_multireq:
             raise DaikinError(f"Unexpected dsiot response: {payload!r}")
         return responses
 
-    def read(self, targets: list[str]) -> dict[str, dict[str, Any]]:
+    def read(self, targets: Sequence[str]) -> dict[str, dict[str, Any]]:
+        """任意アドレスの生読み取り。応答を fr (応答元アドレス) で引ける dict にして返す。
+
+        rsc は検査しない。エラー応答もそのまま観察できるようにするため。
+        """
         responses = self._multireq(build_read_requests(targets))
         return {r.get("fr", ""): r for r in responses}
 
-    def read_one(self, target: str) -> dict[str, Any]:
-        resp = self.read([target]).get(target)
-        if resp is None:
-            raise DaikinError(f"No response for {target}")
-        if resp.get("rsc") not in (None, RSC_OK):
-            raise DaikinError(
-                f"Read of {target} returned rsc={resp.get('rsc')}",
-                rsc=resp.get("rsc"),
-            )
-        return resp
+    def _read_trees(self, *targets: str) -> list[PropertyTree]:
+        """targets を 1 回の multireq で読み、成功応答のプロパティツリーを targets の順で返す。"""
+        by_address = self.read(targets)
+        trees = []
+        for target in targets:
+            resp = by_address.get(target)
+            if resp is None:
+                raise DaikinError(f"No response for {target}")
+            _raise_for_rsc(resp, f"Read of {target}")
+            pc = resp.get("pc")
+            if not isinstance(pc, dict):
+                raise DaikinError(f"Response for {target} has no property tree")
+            trees.append(PropertyTree(pc))
+        return trees
 
     def write(self, to: str, entity_path: Sequence[str], pv: str) -> dict[str, Any]:
-        body = build_write_request(to, entity_path, pv)
-        responses = self._multireq(body)
-        resp = responses[0] if responses else {}
-        if resp.get("rsc") not in (None, RSC_OK):
-            raise DaikinError(
-                f"Write to {to} ({'/'.join(entity_path)}) returned "
-                f"rsc={resp.get('rsc')}",
-                rsc=resp.get("rsc"),
+        """to のコンテナ配下で entity_path が指すリーフに pv (リトルエンディアン 16 進) を書く。"""
+        responses = self._multireq(build_write_request(to, entity_path, pv))
+        if not responses:
+            raise DaikinError(f"No response for write to {to}")
+        _raise_for_rsc(responses[0], f"Write to {to} ({'/'.join(entity_path)})")
+        return responses[0]
+
+    def device_info(self) -> DeviceInfo:
+        info, device = self._read_trees(ADDR_INFO, ADDR_DEVICE)
+        try:
+            return DeviceInfo(
+                name=device.pv("name"),
+                mac=info.pv("mac"),
+                firmware=info.pv("ver"),
+                revision=info.pv("rev"),
+                region=info.pv("reg"),
+                ssid=info.pv("ssid"),
+                api_ver=info.pv("api_ver"),
+                led=device.decode("led", int_to_bool),
+                timezone_offset_min=device.pv("timz/tmdf"),
             )
-        return resp
+        except ValidationError as err:
+            raise DaikinError(f"Unexpected device info from unit: {err}") from err
 
-    def device_info(self) -> dict[str, Any]:
-        data = self.read([ADDR_INFO, ADDR_DEVICE])
-        info = flatten(data.get(ADDR_INFO, {}).get("pc"))
-        dev = flatten(data.get(ADDR_DEVICE, {}).get("pc"))
+    def air_status(self) -> AirStatus:
+        status = self._read_trees(ADDR_STATUS)[0]
+        return AirStatus(
+            power=status.decode(POWER_PATH, hex_to_bool),
+            temperature_c=status.decode(TEMPERATURE_PATH, hex_to_temp),
+            humidity_pct=status.decode(HUMIDITY_PATH, hex_to_int),
+            mode=status.decode(MODE_PATH, hex_to_int),
+            fan_rate=status.decode(FAN_RATE_PATH, hex_to_int),
+            monitors={
+                name: status.decode(path, hex_to_int)
+                for name, path in MONITOR_PATHS.items()
+            },
+        )
 
-        return {
-            "name": leaf_pv(dev, "name"),
-            "mac": leaf_pv(info, "mac"),
-            "firmware": leaf_pv(info, "ver"),
-            "revision": leaf_pv(info, "rev"),
-            "region": leaf_pv(info, "reg"),
-            "ssid": leaf_pv(info, "ssid"),
-            "api_ver": leaf_pv(info, "api_ver"),
-            "led": _as_bool(leaf_pv(dev, "led")),
-            "timezone_offset_min": leaf_pv(dev, "timz/tmdf"),
-        }
-
-    def status_tree(self) -> dict[str, Any]:
-        resp = self.read_one(ADDR_STATUS)
-        flat = flatten(resp.get("pc"))
-        out: dict[str, Any] = {}
-        for path, node in flat.items():
-            out[path] = _decode_leaf(node)
-        return out
-
-    def air_status(self) -> dict[str, Any]:
-        resp = self.read_one(ADDR_STATUS)
-        flat = flatten(resp.get("pc"))
-
-        status = {
-            name: _decode_pv(flat, path, decoder)
-            for name, (path, decoder) in AIR_FIELDS.items()
-        }
-        status["monitors"] = {
-            label: _decode_pv(flat, path, hex_to_int)
-            for label, path in MONITORS.items()
-        }
-        return status
+    def status_tree(self) -> dict[str, DecodedLeaf]:
+        """dgc_status の全リーフを復号して返す。未マップのプロパティを探すための入口。"""
+        status = self._read_trees(ADDR_STATUS)[0]
+        return {path: _decode_leaf(node) for path, node in status.leaves.items()}
 
     def set_power(self, on: bool) -> dict[str, Any]:
-        entity_path = [str(seg) for seg in P_POWER.split("/")]
-        return self.write(ADDR_STATUS, entity_path, "01" if on else "00")
+        return self.write(ADDR_STATUS, POWER_PATH.split("/"), "01" if on else "00")
 
 
-def _as_bool(value: Any) -> bool | None:
-    if value is None:
-        return None
-    return bool(int(value))
+def _raise_for_rsc(resp: dict[str, Any], what: str) -> None:
+    rsc = resp.get("rsc")
+    if rsc not in (None, RSC_OK):
+        raise DaikinError(f"{what} returned rsc={rsc}", rsc=rsc)
 
 
-def _decode_pv(
-    flat: dict[str, dict[str, Any]],
-    path: str,
-    decoder: Callable[[str], Any],
-) -> Any:
-    raw = leaf_pv(flat, path)
-    return decoder(raw) if raw is not None else None
-
-
-def _decode_leaf(node: dict[str, Any]) -> dict[str, Any]:
+def _decode_leaf(node: dict[str, Any]) -> DecodedLeaf:
     pv = node.get("pv")
     md = node.get("md") or {}
-    md_pt = md.get("pt")
-
     value: Any = pv
-    if md_pt == "b" and isinstance(pv, str) and pv != "":
+    ascii_text = None
+    if md.get("pt") == "b" and isinstance(pv, str) and pv:
         try:
             value = hex_to_int(pv)
+            ascii_text = hex_to_ascii(pv)
         except ValueError:
-            value = pv
-    elif md_pt in ("i", "s"):
-        value = pv
-
-    out: dict[str, Any] = {"pv": pv, "value": value, "type": md_pt}
-    if md.get("mi") is not None:
-        out["min"] = md["mi"]
-    if md.get("mx") is not None:
-        out["max"] = md["mx"]
-    if md_pt == "b" and isinstance(pv, str) and pv:
-        ascii_val = hex_to_ascii(pv)
-        if ascii_val.isprintable() and any(c.isalnum() for c in ascii_val):
-            out["ascii"] = ascii_val
-    return out
+            value = pv  # 16 進として読めない pv は生のまま返す
+    return DecodedLeaf(
+        pv=pv,
+        value=value,
+        type=md.get("pt"),
+        min=md.get("mi"),
+        max=md.get("mx"),
+        ascii=ascii_text,
+    )

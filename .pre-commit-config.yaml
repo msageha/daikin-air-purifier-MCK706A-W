@@ -24,19 +24,17 @@ repos:
         stages: [manual]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.17
+    rev: v0.15.20
     hooks:
-      - id: ruff-format
-        files: "^(src|tests|scripts).*\\.py$"
-      - id: ruff
-        files: ".*\\.py$"
+      - id: ruff-check
         args: [--fix]
+      - id: ruff-format
 
   - repo: local
     hooks:
       - id: ty
         name: ty check
-        entry: uv run ty check .
+        entry: uv run ty check
         language: system
-        files: ".*\\.py$"
+        types: [python]
         pass_filenames: false

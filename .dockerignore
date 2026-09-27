@@ -1,5 +1,5 @@
 *
 !src/
+src/**/__pycache__
 !pyproject.toml
 !uv.lock
-!README.md

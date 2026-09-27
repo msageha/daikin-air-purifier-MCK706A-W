@@ -1,9 +1,4 @@
-import pytest
-
 from daikin.client import ADDR_DEVICE, ADDR_INFO, ADDR_STATUS, DaikinClient
-
-pytestmark = pytest.mark.unit
-
 
 # A trimmed adr_0100.dgc_status tree carrying every field air_status decodes.
 STATUS_PC = {
@@ -59,32 +54,39 @@ STATUS_PC = {
 }
 
 
+def _read_returning(by_address):
+    """address -> pc の対応から、DaikinClient.read の代わりになる関数を作る。"""
+    return lambda targets: {
+        addr: {"fr": addr, "rsc": 2000, "pc": pc} for addr, pc in by_address.items()
+    }
+
+
 def test_air_status_decodes_known_fields(monkeypatch):
     client = DaikinClient("http://unit")
-    monkeypatch.setattr(client, "read_one", lambda target: {"pc": STATUS_PC})
+    monkeypatch.setattr(client, "read", _read_returning({ADDR_STATUS: STATUS_PC}))
 
     status = client.air_status()
 
-    assert status["power"] is True  # 0x01
-    assert status["temperature_c"] == 24.0  # 0x0030 LE = 48, half-degrees
-    assert status["humidity_pct"] == 65  # 0x41
-    assert status["mode"] == 2
-    assert status["fan_rate"] == 3
-    assert status["monitors"]["monitor_a"] == 20  # 0x0014 LE
-    assert status["monitors"]["pm_a"] == 660  # 0x000294 LE
-    assert status["monitors"]["pm_b"] == 0
+    assert status.power is True  # 0x01
+    assert status.temperature_c == 24.0  # 0x0030 LE = 48, half-degrees
+    assert status.humidity_pct == 65  # 0x41
+    assert status.mode == 2
+    assert status.fan_rate == 3
+    assert status.monitors["monitor_a"] == 20  # 0x0014 LE
+    assert status.monitors["pm_a"] == 660  # 0x000294 LE
+    assert status.monitors["pm_b"] == 0
 
 
 def test_air_status_missing_fields_become_none(monkeypatch):
     empty = {"pn": "dgc_status", "pt": 1, "pch": []}
     client = DaikinClient("http://unit")
-    monkeypatch.setattr(client, "read_one", lambda target: {"pc": empty})
+    monkeypatch.setattr(client, "read", _read_returning({ADDR_STATUS: empty}))
 
     status = client.air_status()
 
-    assert status["power"] is None
-    assert status["temperature_c"] is None
-    assert status["monitors"]["pm_a"] is None
+    assert status.power is None
+    assert status.temperature_c is None
+    assert status.monitors["pm_a"] is None
 
 
 INFO_PC = {
@@ -100,7 +102,12 @@ DEVICE_PC = {
     "pt": 1,
     "pch": [
         {"pn": "name", "pv": "MCK706A", "md": {"pt": "s"}},
-        {"pn": "led", "pv": "1", "md": {"pt": "b"}},
+        {"pn": "led", "pv": 1, "md": {"pt": "i"}},
+        {
+            "pn": "timz",
+            "pt": 1,
+            "pch": [{"pn": "tmdf", "pv": 540, "md": {"pt": "i"}}],
+        },
     ],
 }
 
@@ -108,18 +115,17 @@ DEVICE_PC = {
 def test_device_info_maps_fields(monkeypatch):
     client = DaikinClient("http://unit")
     monkeypatch.setattr(
-        client,
-        "read",
-        lambda targets: {ADDR_INFO: {"pc": INFO_PC}, ADDR_DEVICE: {"pc": DEVICE_PC}},
+        client, "read", _read_returning({ADDR_INFO: INFO_PC, ADDR_DEVICE: DEVICE_PC})
     )
 
     info = client.device_info()
 
-    assert info["name"] == "MCK706A"
-    assert info["mac"] == "00005E005301"
-    assert info["firmware"] == "3_15_0"
-    assert info["led"] is True
-    assert info["region"] is None  # absent in the sample
+    assert info.name == "MCK706A"
+    assert info.mac == "00005E005301"
+    assert info.firmware == "3_15_0"
+    assert info.led is True
+    assert info.timezone_offset_min == 540
+    assert info.region is None  # absent in the sample
 
 
 def test_set_power_builds_write(monkeypatch):
