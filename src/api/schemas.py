@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from daikin import Course, FanSpeed, HumiditySetting
+
 
 def _validate_dsiot_address(value: str) -> str:
     if not value.startswith("/dsiot/") or ".." in value or "://" in value:
@@ -27,6 +29,31 @@ HexValue = Annotated[str, Field(pattern=r"^([0-9a-fA-F]{2})+$")]
 
 class PowerRequest(BaseModel):
     on: bool = Field(description="true で運転開始、false で停止", examples=[True])
+
+
+class HumidifyRequest(BaseModel):
+    on: bool = Field(
+        description="true で加湿 + 空気清浄、false で空気清浄のみ", examples=[True]
+    )
+
+
+class CourseRequest(BaseModel):
+    course: Course = Field(
+        description="現在の運転切替側に設定するコース", examples=[Course.POLLEN]
+    )
+
+
+class FanSpeedRequest(BaseModel):
+    fan_speed: FanSpeed = Field(
+        description="手動コースの風量", examples=[FanSpeed.TURBO]
+    )
+
+
+class HumiditySettingRequest(BaseModel):
+    humidity_setting: HumiditySetting = Field(
+        description="加湿側のコースに対する湿度設定",
+        examples=[HumiditySetting.STANDARD],
+    )
 
 
 class ReadRequest(BaseModel):

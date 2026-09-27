@@ -10,7 +10,8 @@ from .exceptions import DaikinError
 
 OP_READ = 2
 OP_WRITE = 3
-RSC_OK = 2000
+# 公式アプリは 200x を全て成功扱いにする。MCK706A は書き込み成功時に 2004 を返す。
+RSC_SUCCESS = range(2000, 2010)
 
 
 def hex_to_int(value: str, *, signed: bool = False) -> int:
@@ -20,6 +21,11 @@ def hex_to_int(value: str, *, signed: bool = False) -> int:
 
 def hex_to_bool(value: str) -> bool:
     return hex_to_int(value) != 0
+
+
+def int_to_hex(value: int, length: int) -> str:
+    """整数を length バイトのリトルエンディアン 16 進文字列 (pv の形式) にする。"""
+    return value.to_bytes(length, "little").hex().upper()
 
 
 def hex_to_temp(value: str) -> float:

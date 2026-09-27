@@ -4,7 +4,15 @@ from fastapi import APIRouter, Depends, Request
 
 from daikin import AirStatus, DecodedLeaf, DeviceInfo
 
-from .schemas import PowerRequest, ReadRequest, WriteRequest
+from .schemas import (
+    CourseRequest,
+    FanSpeedRequest,
+    HumidifyRequest,
+    HumiditySettingRequest,
+    PowerRequest,
+    ReadRequest,
+    WriteRequest,
+)
 from .service import DaikinService
 
 router = APIRouter(prefix="/api")
@@ -59,3 +67,33 @@ async def write(body: WriteRequest, service: Service) -> dict[str, Any]:
 async def power(body: PowerRequest, service: Service) -> dict[str, bool]:
     await service.run(service.client.set_power, body.on)
     return {"power": body.on}
+
+
+@router.post("/humidify", tags=["control"])
+async def humidify(body: HumidifyRequest, service: Service) -> dict[str, bool]:
+    """運転切替。加湿 + 空気清浄と、空気清浄のみを切り替える。"""
+    await service.run(service.client.set_humidify, body.on)
+    return {"humidify": body.on}
+
+
+@router.post("/course", tags=["control"])
+async def course(body: CourseRequest, service: Service) -> dict[str, str]:
+    """現在の運転切替側のコースを変える。選べないコースは 409。"""
+    await service.run(service.client.set_course, body.course)
+    return {"course": body.course}
+
+
+@router.post("/fan-speed", tags=["control"])
+async def fan_speed(body: FanSpeedRequest, service: Service) -> dict[str, str]:
+    """手動コースの風量を変える。コースが manual でないと運転には反映されない。"""
+    await service.run(service.client.set_fan_speed, body.fan_speed)
+    return {"fan_speed": body.fan_speed}
+
+
+@router.post("/humidity-setting", tags=["control"])
+async def humidity_setting(
+    body: HumiditySettingRequest, service: Service
+) -> dict[str, str]:
+    """加湿側のコースに対する湿度設定を変える。そのコースの湿度が自動のときは 409。"""
+    await service.run(service.client.set_humidity_setting, body.humidity_setting)
+    return {"humidity_setting": body.humidity_setting}

@@ -5,7 +5,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from api import DaikinService, router
-from daikin import DaikinClient, DaikinConnectionError, DaikinError
+from daikin import (
+    DaikinClient,
+    DaikinConnectionError,
+    DaikinError,
+    DaikinUnsupportedError,
+)
 from settings import settings
 
 
@@ -37,6 +42,13 @@ async def connection_error_handler(
     _: Request, exc: DaikinConnectionError
 ) -> JSONResponse:
     return JSONResponse(status_code=504, content={"detail": str(exc)})
+
+
+@app.exception_handler(DaikinUnsupportedError)
+async def unsupported_error_handler(
+    _: Request, exc: DaikinUnsupportedError
+) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
 
 
 @app.exception_handler(DaikinError)
