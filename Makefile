@@ -1,12 +1,7 @@
 .PHONY: setup
 setup:
-	uv sync --extra test
-	@if [ -f .env ]; then \
-		echo ".env already exists, skipping copy"; \
-	else \
-		cp .env.example .env; \
-		echo "Edit .env to set DAIKIN_HOST if needed."; \
-	fi
+	uv sync
+	@if [ ! -f .env ]; then cp .env.example .env && echo "Edit .env to set DAIKIN_HOST."; fi
 
 .PHONY: run
 run:
@@ -19,18 +14,13 @@ test:
 
 .PHONY: lint
 lint:
-	uv run ty check .
+	uv run ruff format --check .
 	uv run ruff check .
+	uv run ty check
 
 .PHONY: format
 format:
 	uv run ruff format .
-
-.PHONY: check
-check:
-	uv run ruff format --check .
-	uv run ruff check .
-	uv run ty check .
 
 .PHONY: build-image
 build-image:
@@ -50,5 +40,5 @@ precommit:
 
 .PHONY: clean
 clean:
-	@find . -name '__pycache__' -type d -prune -exec rm -r {} + 2>/dev/null || true
+	@find . -name '__pycache__' -type d -prune -exec rm -r {} +
 	@rm -rf .pytest_cache .ruff_cache .ty_cache htmlcov .coverage
