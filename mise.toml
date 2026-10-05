@@ -3,7 +3,7 @@
 # Python 本体は mise ではなく uv が管理する (pyproject.toml の requires-python に従って取得する)。
 [tools]
 uv = "0.12.19"
-prek = "0.5.3"
+prek = "0.5.4"
 actionlint = "1.7.12"
 dprint = "0.57.4"
 fnox = "v1.35.3"
