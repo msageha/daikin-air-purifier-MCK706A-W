@@ -2,7 +2,7 @@
 # latest 指定にしない。手で変更したときは `mise lock` を実行して mise.lock を追従させる。
 # Python 本体は mise ではなく uv が管理する (pyproject.toml の requires-python に従って取得する)。
 [tools]
-uv = "0.12.21"
+uv = "0.12.22"
 prek = "0.5.4"
 actionlint = "1.7.12"
 dprint = "0.58.0"
