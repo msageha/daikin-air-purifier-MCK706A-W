@@ -5,7 +5,7 @@
 uv = "0.12.22"
 prek = "0.5.4"
 actionlint = "1.7.12"
-dprint = "0.58.0"
+dprint = "0.59.0"
 fnox = "v1.36.0"
 gitleaks = "8.30.1"
 hadolint = "2.15.1"
