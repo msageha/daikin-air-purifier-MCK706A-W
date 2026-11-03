@@ -223,7 +223,7 @@ mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシーク�
 - `Dockerfile` のベースイメージのタグ。
 - `dprint.json` の plugin URL と checksum（`customManagers`）。
 
-major 以外の更新は 1 つの PR に集約します。このうち minor / patch は `minimumReleaseAge`（7 日）経過後、
+更新 PR は毎週月曜 9 時前 (Asia/Tokyo) にまとめて作られます。major 以外の更新は 1 つの PR に集約します。このうち minor / patch は `minimumReleaseAge`（7 日）経過後、
 CI green を条件に Renovate 自身が自動マージします（`platformAutomerge: false`）。major は個別 PR で人手レビューします。
 
 ### CI
