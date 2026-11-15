@@ -7,7 +7,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
 
-FROM python:3.14-slim-bookworm AS runner
+FROM python:3.15-slim-bookworm AS runner
 
 # Run as a non-root user.
 RUN useradd --create-home --uid 10001 appuser
