@@ -6,6 +6,7 @@ dgc_status 配下のプロパティの意味は公式 DAIKIN Smart App の空気
 実機 (MCK706A / FW 3_15_0) で書き込んで確認したもの。
 """
 
+import math
 from collections.abc import Sequence
 from enum import StrEnum
 from http import HTTPStatus
@@ -122,7 +123,10 @@ class DaikinClient:
         # 復号の失敗は requests.JSONDecodeError に限らず ValueError (桁数の上限を超える整数等) で届き、
         # ValidationError も ValueError の派生なので、ValueError で両方を受ける。
         try:
-            return MultireqResponse.model_validate(resp.json(), strict=True).responses
+            payload = resp.json(
+                parse_float=_parse_finite_float, parse_constant=_parse_finite_float
+            )
+            return MultireqResponse.model_validate(payload, strict=True).responses
         except ValueError as err:
             raise DaikinError(
                 f"Unexpected dsiot response from {url}: {resp.text[:200]}"
@@ -321,6 +325,17 @@ class DaikinClient:
         )
 
 
+def _parse_finite_float(text: str) -> float:
+    """
+    JSON の数値と NaN・Infinity の literal を float にし、有限でない値 (1e309 を含む) は ValueError にする。
+
+    受け入れると、FastAPI が応答に直列化するときに null へ置き換わって不正な応答が 200 で返るか、int() で 500 になる。
+    """
+    if not math.isfinite(value := float(text)):
+        raise ValueError(f"non-finite number {text} in JSON")
+    return value
+
+
 def _current_humidify(status: PropertyTree) -> bool:
     if (humidify := status.decode(HUMIDIFY_PATH, decoder=_hex_to_humidify)) is None:
         raise DaikinError("Unit did not report the operation changeover")
@@ -331,8 +346,8 @@ def _raise_for_rsc(resp: dict[str, Any], *, what: str) -> None:
     rsc = resp.get("rsc")
     if rsc is None:
         return
-    # rsc は HTTP の応答に載せるので、整数でない値 (JSON に戻せない inf 等) は結果コードとして扱わない。
-    if not isinstance(rsc, int):
+    # "2000" や true (bool は int の派生) を結果コードとして DaikinError.rsc (int) に載せないよう、JSON の整数以外は形の不正として扱う。
+    if type(rsc) is not int:
         raise DaikinError(f"{what} returned a non-integer rsc: {rsc!r}")
     if rsc not in RSC_SUCCESS:
         raise DaikinError(f"{what} returned rsc={rsc}", rsc=rsc)
@@ -389,7 +404,9 @@ def _enum_from_code[E: StrEnum](enum: type[E], *, code: int) -> E:
 
 def _decode_leaf(node: dict[str, Any], *, path: str) -> DecodedLeaf:
     pv = node.get("pv")
-    md = node.get("md", {})
+    # md が null のリーフは、md が無いリーフと同じく、メタ情報の無いリーフとして返す。
+    if (md := node.get("md")) is None:
+        md = dict[str, Any]()
     if not is_json_object(md):
         raise DaikinError(f'"md" of {path} is not an object: {md!r}')
     value: Any = pv

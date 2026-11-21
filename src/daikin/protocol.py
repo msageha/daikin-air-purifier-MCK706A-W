@@ -64,7 +64,7 @@ class PropertyTree:
     multireq 応答の pc を、リーフのパス ("e_1002/e_A002/p_01") で引ける形にしたもの。
 
     パスにルート (dgc_status 等) 自身の名前は含まない。`pch` がリストでない、`pch` の中のノードが object でない、
-    またはそのノードの `pn` が文字列でない `pc` を渡すと DaikinError を送出する。
+    またはそのノードの `pn` が無い・空・文字列でない `pc` を渡すと DaikinError を送出する。
     """
 
     def __init__(self, pc: dict[str, Any]) -> None:
@@ -78,9 +78,10 @@ class PropertyTree:
         for node in cast("list[object]", nodes):
             if not is_json_object(node):
                 raise DaikinError(f"Node {where} is not an object: {node!r}")
-            name = node.get("pn", "")
-            if not isinstance(name, str):
-                raise DaikinError(f'"pn" {where} is not a string: {name!r}')
+            # 名前の無いノードを通すと、その子が親の違うリーフと同じパスになる。
+            name = node.get("pn")
+            if not isinstance(name, str) or not name:
+                raise DaikinError(f'"pn" {where} is not a non-empty string: {name!r}')
             path = f"{prefix}/{name}" if prefix else name
             if "pch" in node:
                 self._collect(node["pch"], prefix=path)

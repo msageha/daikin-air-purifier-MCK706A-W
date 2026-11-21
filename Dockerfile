@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # builder で作った .venv を runner にそのまま COPY するので、両 stage の Python を同じ版にする
 ARG PYTHON_VERSION=3.14
 
