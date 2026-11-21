@@ -203,7 +203,7 @@ class MultireqResponse(BaseModel):
     """
     /dsiot/multireq の応答本文。
 
-    各応答は fr・rsc・pc 等を持つ JSON object で、/api/read が生のまま返すので object のまま扱う。
+    各応答は fr・rsc・pc 等を持つ JSON object。DaikinClient.read は応答を生のまま返すので、object のまま扱う。
     """
 
     responses: list[dict[str, Any]]

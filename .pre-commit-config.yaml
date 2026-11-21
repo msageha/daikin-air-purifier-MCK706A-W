@@ -1,6 +1,8 @@
-# pytest は push 前、commitlint は commit message の確定時に実行するため、pre-push と commit-msg も install する。
-default_install_hook_types: [pre-commit, pre-push, commit-msg]
-# rebase や cherry-pick で pre-commit を経ずに作った commit も、push の前に検査する。
+# pytest は push 前、commitlint は commit message の確定時、main への merge commit の禁止は merge 時に実行するため、
+# pre-push・commit-msg・pre-merge-commit も install する。
+default_install_hook_types: [pre-commit, pre-push, commit-msg, pre-merge-commit]
+# rebase や cherry-pick で pre-commit を経ずに作った変更も、push の前に検査する。
+# pre-push の hook は push する commit ではなく checkout 中の作業ツリーを読むので、push する変更の最終的な判定は PR の CI が行う。
 default_stages: [pre-commit, pre-push]
 
 # .mise/locks/ は mise lock が生成し、mise.lock が digest で参照する。整形すると digest が合わなくなるので、どの hook にも渡さない。
@@ -27,12 +29,12 @@ repos:
         args: [--assume-in-merge]
       - id: mixed-line-ending
         stages: [pre-commit]
-      # main は PR 必須なので、手元で main に commit した時点で止める。
-      # push 時は送信先ではなく checkout 中のブランチを見るので、commit 時だけ実行する。
+      # main は PR 必須なので、手元で main に commit した時点で止める (競合の無い git merge は pre-commit ではなく
+      # pre-merge-commit を呼ぶので、そこでも止める)。push 時は送信先ではなく checkout 中のブランチを見るので実行しない。
       # 検証用の mise run pre-commit は main 上でも使えるよう、この hook を SKIP する。
       - id: no-commit-to-branch
         args: [--branch, main]
-        stages: [pre-commit]
+        stages: [pre-commit, pre-merge-commit]
   # ツールは mise.toml で pin した版を使う。git hook はシェルの PATH を引き継がないことがあるので、mise exec / mise run で起動する。
   # include_deleted を付けた hook は、削除だけの変更でも実行し、削除したファイルを参照する箇所を検出する。
   - repo: local
@@ -97,14 +99,14 @@ repos:
         name: Lint, check layers and type-check python with mise run lint
         language: system
         entry: mise run lint
-        files: (\.py$|^(pyproject\.toml|uv\.lock|\.python-version|mise\.toml|mise\.lock)$)
+        files: (\.pyi?$|^(pyproject\.toml|uv\.lock|\.python-version|mise\.toml|mise\.lock)$)
         pass_filenames: false
         include_deleted: true
       - id: test
         name: Run python tests with mise run test
         language: system
         entry: mise run test
-        files: (\.py$|^(pyproject\.toml|uv\.lock|\.python-version|mise\.toml|mise\.lock)$)
+        files: (\.pyi?$|^(pyproject\.toml|uv\.lock|\.python-version|mise\.toml|mise\.lock)$)
         pass_filenames: false
         include_deleted: true
         stages: [pre-push]

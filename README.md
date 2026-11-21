@@ -199,7 +199,7 @@ mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシーク�
   （作業ツリーの次の作業のファイルを書き換えないため）。
   ruff / ty / import-linter は `uv run --locked` で動かし、バージョンは `uv.lock` に一元化しています。
   pyright は npm で配布されるので、`mise.toml` に node と合わせて pin しています。
-  main への commit は `no-commit-to-branch` hook が止めます（main は PR 必須）。この hook は実際の commit 時だけに効かせ、
+  main への commit と merge commit は `no-commit-to-branch` hook が止めます（main は PR 必須）。この hook は実際の commit 時だけに効かせ、
   検証用の `mise run pre-commit` では実行しません（main を checkout したままでも検証できるようにするため）。
 - [import-linter](https://import-linter.readthedocs.io/): `pyproject.toml` の `[tool.importlinter]` の契約で、
   `daikin` が `api`・`main`・`settings` に依存しないこと、各パッケージ内の層の向き、`api` と `daikin` の中で外部ライブラリ
@@ -251,8 +251,10 @@ mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシーク�
 - `mise.toml` のバージョン bump と、それに伴う `mise.lock` と `.mise/locks/` の更新（同じ PR で行われる）。
 - `.pre-commit-config.yaml` の hook `rev` と、`language: node` の hook の `additional_dependencies`。
 - workflow の `uses:` の commit SHA（バージョンはコメントで併記し、Renovate が両方を更新する）。
-- `Dockerfile` のベースイメージのタグ。
 - `dprint.json` の plugin URL と checksum（`customManagers`）。
+
+`Dockerfile` のベースイメージ（uv と python）は、両 stage の Python の版を `ARG PYTHON_VERSION` で揃えているので
+Renovate は更新しません。Python の版は `.python-version` と合わせて手で上げます。
 
 更新 PR は毎週月曜 9 時前 (Asia/Tokyo) にまとめて作られます。major 以外の更新は 1 つの PR に集約します。このうち minor / patch は `minimumReleaseAge`（7 日）経過後、
 CI green を条件に Renovate 自身が自動マージします（`platformAutomerge: false`）。major は個別 PR で人手レビューします。
