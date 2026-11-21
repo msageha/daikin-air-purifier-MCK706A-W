@@ -14,7 +14,7 @@ hadolint = "2.15.1"
 shellcheck = "0.11.0"
 
 [env]
-DAIKIN_HOST = "http://172.16.1.100"
+DAIKIN_HOST = "http://192.168.1.100"
 
 [tasks.dev]
 description = "Run the API server with auto-reload on http://127.0.0.1:8000"

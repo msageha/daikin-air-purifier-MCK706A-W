@@ -24,9 +24,9 @@ mise install  # ツールをインストールし、uv sync と git hooks のセ
 旧 hook を置き換えてください。置き換えないと prek が旧 hook（`.git/hooks/pre-commit.legacy`）も実行し、
 `uv sync` で削除された pre-commit package を呼んで commit が失敗します。
 
-設定は環境変数で渡します。接続先の空気清浄機（`DAIKIN_HOST`: 例 `http://192.168.1.100`）は必須で、`mise.toml` の `[env]` で
-設定します。mise の `[env]` はシェルの同名の変数より優先されるので、手元で変えるときは git 管理外の `mise.local.toml` の
-`[env]` に書いてください。`TIMEOUT`（本体への HTTP タイムアウト、秒）は省略可で既定 10 秒です。
+設定は環境変数で渡します。接続先の空気清浄機の URL（`DAIKIN_HOST`）は必須です。`mise.toml` の `[env]` には例の値
+`http://192.168.1.100` が入っているので、実機のアドレスは git 管理外の `mise.local.toml` の `[env]` に書いてください
+（mise の `[env]` はシェルの同名の変数より優先されるため、シェルからは上書きできません）。`TIMEOUT`（本体への HTTP タイムアウト、秒）は省略可で既定 10 秒です。
 
 ## 起動
 
