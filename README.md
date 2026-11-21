@@ -17,7 +17,7 @@ mise install  # ツールをインストールし、uv sync と git hooks のセ
 ```
 
 `mise install` を実行すると `[hooks] postinstall` により `uv sync --locked`（依存関係を `.venv` に入れる）と
-`prek install`（`.git/hooks/pre-commit`・`.git/hooks/pre-push`・`.git/hooks/commit-msg` の登録）が自動実行されます。
+`prek install`（`.git/hooks/` の pre-commit・pre-push・commit-msg・pre-merge-commit の登録）が自動実行されます。
 `.pre-commit-config.yaml` の hook 構成が変わったあとの既存 clone では `mise exec -- prek install` を再実行してください。
 
 以前 `make precommit-install`（pre-commit）で hook を登録していた clone では、`mise exec -- prek install --force` で
@@ -176,8 +176,9 @@ curl -X POST http://127.0.0.1:8000/api/write \
 Python は 3.14 以上です。Python のツールチェーンは uv（依存関係と Python 本体）、ruff（lint + formatter）、
 ty と pyright（型チェック）、import-linter（層の依存の検査）、pytest で、ruff・ty・pyright は strict に設定しています。
 Python の依存は、`pyproject.toml` の `[[tool.uv.index]]` で宣言した `https://pypi.flatt.tech/simple/` から取得します。
-この宣言は `UV_INDEX_URL` やユーザー設定の index より優先されるので、それらを設定した環境でも `uv.lock` の取得元は変わりません。
-ただし `UV_DEFAULT_INDEX` と、`UV_INDEX` や `--index` で足した index はこの宣言より優先されるので、設定すると `uv.lock` と食い違います。
+既定の index として宣言しているので、`UV_INDEX_URL` やユーザー設定の既定の index を設定した環境でも、この宣言が使われます。
+ただし、既定の index を差し替える `UV_DEFAULT_INDEX` と、追加の index（`UV_INDEX`・`UV_EXTRA_INDEX_URL`・`--index`・ユーザー設定の
+`[[index]]`）はこの宣言より先に使われるので、設定すると `uv.lock` の取得元と食い違います。
 それ以外のツールは `mise.toml` の `[tools]` で exact version に pin し、`mise.lock` でプラットフォームごとの
 URL / checksum を固定しています。CI（`ci.yaml`）もローカルも同じ `mise.lock` からツールを解決するため、
 同じ検証をローカルで再現できます。タスクの一覧は末尾の「[タスク](#タスク)」を参照してください。
@@ -199,7 +200,7 @@ mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシーク�
   （作業ツリーの次の作業のファイルを書き換えないため）。
   ruff / ty / import-linter は `uv run --locked` で動かし、バージョンは `uv.lock` に一元化しています。
   pyright は npm で配布されるので、`mise.toml` に node と合わせて pin しています。
-  main への commit と merge commit は `no-commit-to-branch` hook が止めます（main は PR 必須）。この hook は実際の commit 時だけに効かせ、
+  main への commit と merge commit は `no-commit-to-branch` hook が止めます（main は PR 必須）。この hook は実際の commit と merge の時だけに効かせ、
   検証用の `mise run pre-commit` では実行しません（main を checkout したままでも検証できるようにするため）。
 - [import-linter](https://import-linter.readthedocs.io/): `pyproject.toml` の `[tool.importlinter]` の契約で、
   `daikin` が `api`・`main`・`settings` に依存しないこと、各パッケージ内の層の向き、`api` と `daikin` の中で外部ライブラリ
@@ -221,7 +222,7 @@ mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシーク�
 - [zizmor](https://docs.zizmor.sh/): workflow と `.pre-commit-config.yaml` のセキュリティ監査（`zizmor` hook）。
   `--persona auditor` で false positive を含む全 finding を、`--strict-collection` で解析できない入力を失敗にし、
   `--no-ignores` / `--no-config` で inline の ignore コメントと設定ファイルによる除外を無効にしています。finding は
-  除外せず workflow を直して解消します。
+  除外せず、指摘されたファイル（workflow か `.pre-commit-config.yaml`）を直して解消します。
   GitHub API を使う online audit（impostor-commit 等）は token があるときだけ走るため、CI の `prek` job は
   `ZIZMOR_GITHUB_TOKEN` を渡した専用 step でも実行します。ローカルで同じ範囲を監査するには
   `ZIZMOR_GITHUB_TOKEN=$(gh auth token) mise exec -- zizmor --persona auditor --strict-collection --no-ignores --no-config .` を実行します。
@@ -253,8 +254,10 @@ mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシーク�
 - workflow の `uses:` の commit SHA（バージョンはコメントで併記し、Renovate が両方を更新する）。
 - `dprint.json` の plugin URL と checksum（`customManagers`）。
 
-`Dockerfile` のベースイメージ（uv と python）は、両 stage の Python の版を `ARG PYTHON_VERSION` で揃えているので
-Renovate は更新しません。Python の版は `.python-version` と合わせて手で上げます。
+実行する Python の版は、`.python-version` と `Dockerfile` の `ARG PYTHON_VERSION`（両 stage のベースイメージの版）を同じ値にして
+手で上げます。片方だけを上げる PR が作られないよう、`renovate.json` で `.python-version` と `Dockerfile` の python・uv のイメージを
+Renovate の対象外にしています。
+対応する Python の下限を上げるときは、`pyproject.toml` の `requires-python` と `[tool.pyright]` の `pythonVersion` も合わせます。
 
 更新 PR は毎週月曜 9 時前 (Asia/Tokyo) にまとめて作られます。major 以外の更新は 1 つの PR に集約します。このうち minor / patch は `minimumReleaseAge`（7 日）経過後、
 CI green を条件に Renovate 自身が自動マージします（`platformAutomerge: false`）。major は個別 PR で人手レビューします。
@@ -432,7 +435,7 @@ POST http://<host>/dsiot/multireq
 src/
   daikin/          dsiot ローカル API クライアント（FastAPI 非依存・単体利用可）
     protocol.py      multireq 本文の組み立て、16 進デコーダ、PropertyTree
-    models.py        Course / FanSpeed / HumiditySetting、DeviceInfo / AirStatus / DecodedLeaf
+    models.py        Course / FanSpeed / HumiditySetting、DeviceInfo / AirStatus / DecodedLeaf、MultireqResponse
     client.py        DaikinClient（通信、MCK706A のアドレス・プロパティパス・wire 値、高レベル API）
     exceptions.py    DaikinError / DaikinConnectionError / DaikinUnsupportedError
   api/             FastAPI 層

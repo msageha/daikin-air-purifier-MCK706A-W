@@ -9,7 +9,7 @@ dgc_status 配下のプロパティの意味は公式 DAIKIN Smart App の空気
 from collections.abc import Sequence
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Any, TypeIs
+from typing import Any
 
 import requests
 from pydantic import ValidationError
@@ -35,6 +35,7 @@ from daikin.protocol import (
     hex_to_temp,
     int_to_bool,
     int_to_hex,
+    is_json_object,
 )
 
 # dgc_status が制御とセンサー、adp_i がアダプタ情報、adp_d がユーザー設定、
@@ -118,9 +119,11 @@ class DaikinClient:
         if not HTTPStatus.OK <= resp.status_code < HTTPStatus.MULTIPLE_CHOICES:
             raise DaikinError(f"HTTP {resp.status_code} from {url}: {resp.text[:200]}")
         # JSON の復号は、応答の encoding に従う requests に任せる (pydantic の JSON パーサーは UTF-8 だけを読む)。
+        # 復号の失敗は requests.JSONDecodeError に限らず ValueError (桁数の上限を超える整数等) で届き、
+        # ValidationError も ValueError の派生なので、ValueError で両方を受ける。
         try:
             return MultireqResponse.model_validate(resp.json(), strict=True).responses
-        except (requests.JSONDecodeError, ValidationError) as err:
+        except ValueError as err:
             raise DaikinError(
                 f"Unexpected dsiot response from {url}: {resp.text[:200]}"
             ) from err
@@ -131,20 +134,24 @@ class DaikinClient:
 
         rsc は検査しない。エラー応答もそのまま観察できるようにするため。
         """
-        responses = self._multireq(build_read_requests(targets))
-        return {r.get("fr", ""): r for r in responses}
+        by_address: dict[str, dict[str, Any]] = {}
+        for resp in self._multireq(build_read_requests(targets)):
+            fr = resp.get("fr", "")
+            if not isinstance(fr, str):
+                raise DaikinError(f"Unexpected fr in dsiot response: {fr!r}")
+            by_address[fr] = resp
+        return by_address
 
     def _read_trees(self, *targets: str) -> list[PropertyTree]:
         """targets を 1 回の multireq で読み、成功応答のプロパティツリーを targets の順で返す。"""
         by_address = self.read(targets)
         trees: list[PropertyTree] = []
         for target in targets:
-            resp = by_address.get(target)
-            if resp is None:
+            if (resp := by_address.get(target)) is None:
                 raise DaikinError(f"No response for {target}")
             _raise_for_rsc(resp, what=f"Read of {target}")
             pc = resp.get("pc")
-            if not _is_json_object(pc):
+            if not is_json_object(pc):
                 raise DaikinError(f"Response for {target} has no property tree")
             trees.append(PropertyTree(pc))
         return trees
@@ -229,7 +236,9 @@ class DaikinClient:
     def status_tree(self) -> dict[str, DecodedLeaf]:
         """dgc_status の全リーフを復号して返す。未マップのプロパティを探すための入口。"""
         status = self._read_trees(ADDR_STATUS)[0]
-        return {path: _decode_leaf(node) for path, node in status.leaves.items()}
+        return {
+            path: _decode_leaf(node, path=path) for path, node in status.leaves.items()
+        }
 
     def set_power(self, *, on: bool) -> dict[str, Any]:
         return self.write(
@@ -313,20 +322,19 @@ class DaikinClient:
 
 
 def _current_humidify(status: PropertyTree) -> bool:
-    humidify = status.decode(HUMIDIFY_PATH, decoder=_hex_to_humidify)
-    if humidify is None:
+    if (humidify := status.decode(HUMIDIFY_PATH, decoder=_hex_to_humidify)) is None:
         raise DaikinError("Unit did not report the operation changeover")
     return humidify
 
 
-def _is_json_object(value: object) -> TypeIs[dict[str, Any]]:
-    """JSON から読んだ値が object か。JSON の object のキーは常に str。"""
-    return isinstance(value, dict)
-
-
 def _raise_for_rsc(resp: dict[str, Any], *, what: str) -> None:
     rsc = resp.get("rsc")
-    if rsc is not None and rsc not in RSC_SUCCESS:
+    if rsc is None:
+        return
+    # rsc は HTTP の応答に載せるので、整数でない値 (JSON に戻せない inf 等) は結果コードとして扱わない。
+    if not isinstance(rsc, int):
+        raise DaikinError(f"{what} returned a non-integer rsc: {rsc!r}")
+    if rsc not in RSC_SUCCESS:
         raise DaikinError(f"{what} returned rsc={rsc}", rsc=rsc)
 
 
@@ -336,11 +344,10 @@ def _require_supported(tree: PropertyTree, *, path: str, code: int, what: str) -
 
     実機はビットマスク外の値も拒否せず保存してしまうので、書き込む前に弾く。
     """
-    node = tree.leaves.get(path)
-    if node is None:
+    if (node := tree.leaves.get(path)) is None:
         raise DaikinError(f"Unit does not expose {path}")
     md = node.get("md")
-    mask = md.get("mx") if _is_json_object(md) else None
+    mask = md.get("mx") if is_json_object(md) else None
     if mask is None:
         raise DaikinError(f"Unit did not advertise supported values for {path}")
     try:
@@ -380,10 +387,11 @@ def _enum_from_code[E: StrEnum](enum: type[E], *, code: int) -> E:
     return members[code]
 
 
-def _decode_leaf(node: dict[str, Any]) -> DecodedLeaf:
+def _decode_leaf(node: dict[str, Any], *, path: str) -> DecodedLeaf:
     pv = node.get("pv")
-    raw_md = node.get("md")
-    md: dict[str, Any] = raw_md if _is_json_object(raw_md) else {}
+    md = node.get("md", {})
+    if not is_json_object(md):
+        raise DaikinError(f'"md" of {path} is not an object: {md!r}')
     value: Any = pv
     ascii_text = None
     if md.get("pt") == "b" and isinstance(pv, str) and pv:

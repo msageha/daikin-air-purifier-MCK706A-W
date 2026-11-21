@@ -29,8 +29,9 @@ dev = [
 exclude-newer = "7 days"
 package = false
 
-# UV_INDEX_URL やユーザー設定の index の有無で uv.lock の registry が変わらないよう、それらより優先される index を宣言する。
-# UV_DEFAULT_INDEX はこの宣言より優先されるので、設定すると uv.lock と食い違う。
+# UV_INDEX_URL やユーザー設定の既定の index で uv.lock の registry が変わらないよう、既定の index を宣言する。
+# UV_DEFAULT_INDEX と、追加の index (UV_INDEX・UV_EXTRA_INDEX_URL・--index・ユーザー設定の [[index]]) は
+# この宣言より先に使われるので、設定すると uv.lock と食い違う。
 [[tool.uv.index]]
 name = "flatt"
 url = "https://pypi.flatt.tech/simple/"
@@ -107,6 +108,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# テストは assert と、期待値の数値リテラルで書く。
 "tests/**" = ["S101", "PLR2004"]
 
 [tool.ruff.lint.pylint]
@@ -184,7 +186,7 @@ root = ["./src", "."]
 python-platform = "linux"
 
 [tool.ty.analysis]
-# 抑制は `ty: ignore` に一本化する。
+# `# type: ignore` を無視し、抑制は規則名付きの `# ty: ignore[<規則>]` だけにする。
 respect-type-ignore-comments = false
 strict-equality-semantics = true
 strict-generic-narrowing = true
@@ -198,6 +200,7 @@ include = ["src", "tests"]
 extraPaths = ["src"]
 venvPath = "."
 venv = ".venv"
+# 実行環境の Python (.python-version) ではなく、対応する下限 (requires-python) の版で検査する。
 pythonVersion = "3.14"
 pythonPlatform = "Linux"
 typeCheckingMode = "strict"

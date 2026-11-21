@@ -5,7 +5,7 @@ dsiot のワイヤフォーマット: multireq 本文の組み立てと、応答
 """
 
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, TypeIs, cast
 
 from daikin.exceptions import DaikinError
 
@@ -54,20 +54,33 @@ def int_to_bool(value: int | str) -> bool:
     return int(value) != 0
 
 
+def is_json_object(value: object) -> TypeIs[dict[str, Any]]:
+    """JSON から読んだ値が object か。JSON の object のキーは常に str。"""
+    return isinstance(value, dict)
+
+
 class PropertyTree:
     """
     multireq 応答の pc を、リーフのパス ("e_1002/e_A002/p_01") で引ける形にしたもの。
 
-    パスにルート (dgc_status 等) 自身の名前は含まない。
+    パスにルート (dgc_status 等) 自身の名前は含まない。`pch` がリストでない、`pch` の中のノードが object でない、
+    またはそのノードの `pn` が文字列でない `pc` を渡すと DaikinError を送出する。
     """
 
     def __init__(self, pc: dict[str, Any]) -> None:
         self.leaves: dict[str, dict[str, Any]] = {}
         self._collect(pc.get("pch", []), prefix="")
 
-    def _collect(self, nodes: list[dict[str, Any]], *, prefix: str) -> None:
-        for node in nodes:
+    def _collect(self, nodes: object, *, prefix: str) -> None:
+        where = f"under {prefix!r}" if prefix else "under the root"
+        if not isinstance(nodes, list):
+            raise DaikinError(f'"pch" {where} is not a list: {nodes!r}')
+        for node in cast("list[object]", nodes):
+            if not is_json_object(node):
+                raise DaikinError(f"Node {where} is not an object: {node!r}")
             name = node.get("pn", "")
+            if not isinstance(name, str):
+                raise DaikinError(f'"pn" {where} is not a string: {name!r}')
             path = f"{prefix}/{name}" if prefix else name
             if "pch" in node:
                 self._collect(node["pch"], prefix=path)
@@ -86,8 +99,7 @@ class PropertyTree:
         Raises:
             DaikinError: pv が decoder の想定する形でない。
         """
-        pv = self.pv(path)
-        if pv is None:
+        if (pv := self.pv(path)) is None:
             return None
         try:
             return decoder(pv)

@@ -116,7 +116,7 @@ exit "${failed}"
 '''
 
 [hooks]
-# uv sync で .venv を用意し、prek install で git hooks (pre-commit / pre-push / commit-msg) を登録する。
+# uv sync で .venv を用意し、prek install で git hooks (pre-commit / pre-push / commit-msg / pre-merge-commit) を登録する。
 # --locked: CI (mise install --locked) でもこの hook が走るため、ここで uv.lock を書き換えてしまうと
 # 後続の uv run --locked が pyproject.toml との不整合を検出できなくなる
 postinstall = """

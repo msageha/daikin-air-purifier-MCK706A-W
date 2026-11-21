@@ -1,5 +1,8 @@
 """
-DaikinClient が返す復号済みの値。pydantic モデルなので FastAPI の応答にそのまま使える。
+DaikinClient が扱う pydantic モデル。
+
+DeviceInfo・AirStatus・DecodedLeaf は DaikinClient が返す復号済みの値で、FastAPI の応答にそのまま使える。
+MultireqResponse は本体の /dsiot/multireq の応答の形で、DaikinClient が応答の検証に使う。
 
 コース・風量・湿度設定のラベルは公式 DAIKIN Smart App (GPFCjConvertValue /
 strings.xml) の空気清浄機向け定義に合わせている。wire 値との対応は client.py が持つ。
