@@ -1,4 +1,7 @@
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim AS builder
+# builder で作った .venv を runner にそのまま COPY するので、両 stage の Python を同じ版にする
+ARG PYTHON_VERSION=3.14
+
+FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -7,7 +10,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
 
-FROM python:3.15-slim-bookworm AS runner
+FROM python:${PYTHON_VERSION}-slim-bookworm AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/msageha/daikin-air-purifier-MCK706A-W" \
       org.opencontainers.image.licenses="MIT"

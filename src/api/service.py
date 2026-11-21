@@ -5,7 +5,8 @@ from daikin import DaikinClient
 
 
 class DaikinService:
-    """同期の DaikinClient を event loop から使うためのラッパー。
+    """
+    同期の DaikinClient を event loop から使うためのラッパー。
 
     DaikinClient は requests.Session を共有していて並行利用できないので、
     呼び出しを lock で直列化して worker thread で実行する。

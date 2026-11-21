@@ -12,26 +12,26 @@ from daikin.protocol import (
 )
 
 
-def test_hex_to_int_little_endian():
+def test_hex_to_int_little_endian() -> None:
     assert hex_to_int("3000") == 48
     assert hex_to_int("41") == 65
     assert hex_to_int("940200") == 660
     assert hex_to_int("00") == 0
 
 
-def test_hex_to_int_signed():
+def test_hex_to_int_signed() -> None:
     # 0xFFEE little-endian, two's complement -> -18
     assert hex_to_int("EEFF", signed=True) == -18
     assert hex_to_int("EEFF") == 65518
 
 
-def test_hex_to_temp_half_degrees():
+def test_hex_to_temp_half_degrees() -> None:
     assert hex_to_temp("3000") == 24.0  # 48 / 2
     assert hex_to_temp("EEFF") == -9.0  # -18 / 2
     assert hex_to_temp("B400") == 90.0  # 180 / 2
 
 
-def test_hex_to_ascii_trims_nul():
+def test_hex_to_ascii_trims_nul() -> None:
     assert hex_to_ascii("413530375F4B000000") == "A507_K"
     assert hex_to_ascii("44413831") == "DA81"
 
@@ -64,7 +64,7 @@ SAMPLE_PC = {
 }
 
 
-def test_property_tree_builds_slash_paths():
+def test_property_tree_builds_slash_paths() -> None:
     tree = PropertyTree(SAMPLE_PC)
     assert set(tree.leaves) == {
         "e_1002/e_A002/p_01",
@@ -74,20 +74,20 @@ def test_property_tree_builds_slash_paths():
     assert tree.leaves["e_1002/e_A00B/p_01"]["pv"] == "3000"
 
 
-def test_property_tree_empty():
+def test_property_tree_empty() -> None:
     assert PropertyTree({}).leaves == {}
     assert PropertyTree({"pn": "dgc_status", "pt": 1, "pch": []}).leaves == {}
 
 
-def test_property_tree_pv_and_decode():
+def test_property_tree_pv_and_decode() -> None:
     tree = PropertyTree(SAMPLE_PC)
     assert tree.pv("e_1002/e_A002/p_01") == "01"
     assert tree.pv("nope") is None
-    assert tree.decode("e_1002/e_A00B/p_01", hex_to_temp) == 24.0
-    assert tree.decode("nope", hex_to_int) is None
+    assert tree.decode("e_1002/e_A00B/p_01", decoder=hex_to_temp) == 24.0
+    assert tree.decode("nope", decoder=hex_to_int) is None
 
 
-def test_build_read_requests():
+def test_build_read_requests() -> None:
     body = build_read_requests(["/dsiot/edge.adp_i", "/dsiot/edge.adp_d"])
     assert body == {
         "requests": [
@@ -97,9 +97,11 @@ def test_build_read_requests():
     }
 
 
-def test_build_write_request_nests_from_leaf():
+def test_build_write_request_nests_from_leaf() -> None:
     body = build_write_request(
-        "/dsiot/edge/adr_0100.dgc_status", ["e_1002", "e_A002", "p_01"], "00"
+        "/dsiot/edge/adr_0100.dgc_status",
+        entity_path=["e_1002", "e_A002", "p_01"],
+        pv="00",
     )
     req = body["requests"][0]
     assert req["op"] == OP_WRITE
@@ -114,6 +116,6 @@ def test_build_write_request_nests_from_leaf():
     assert leaf == {"pn": "p_01", "pt": 3, "pv": "00"}
 
 
-def test_build_write_request_rejects_empty_path():
-    with pytest.raises(ValueError):
-        build_write_request("/dsiot/edge/adr_0100.dgc_status", [], "00")
+def test_build_write_request_rejects_empty_path() -> None:
+    with pytest.raises(ValueError, match="entity_path must not be empty"):
+        build_write_request("/dsiot/edge/adr_0100.dgc_status", entity_path=[], pv="00")

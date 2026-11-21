@@ -1,13 +1,13 @@
 from daikin.models import AirStatus, Course, DeviceInfo, FanSpeed
 
 
-def test_device_info_defaults_optional():
+def test_device_info_defaults_optional() -> None:
     info = DeviceInfo.model_validate({"name": "MCK706A", "firmware": "3_15_0"})
     assert info.name == "MCK706A"
     assert info.mac is None
 
 
-def test_air_status_roundtrip():
+def test_air_status_roundtrip() -> None:
     status = AirStatus.model_validate(
         {
             "power": True,

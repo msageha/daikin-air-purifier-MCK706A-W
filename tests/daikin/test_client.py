@@ -1,3 +1,8 @@
+from collections.abc import Callable, Sequence
+from typing import Any
+
+import pytest
+
 from daikin.client import (
     ADDR_ADAPTER_RUNTIME,
     ADDR_DEVICE,
@@ -79,14 +84,16 @@ STATUS_PC = {
 }
 
 
-def _read_returning(by_address):
+def _read_returning(
+    by_address: dict[str, dict[str, Any]],
+) -> Callable[[Sequence[str]], dict[str, dict[str, Any]]]:
     """address -> pc の対応から、DaikinClient.read の代わりになる関数を作る。"""
-    return lambda targets: {
+    return lambda _targets: {
         addr: {"fr": addr, "rsc": 2000, "pc": pc} for addr, pc in by_address.items()
     }
 
 
-def test_air_status_decodes_known_fields(monkeypatch):
+def test_air_status_decodes_known_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     client = DaikinClient("http://unit")
     monkeypatch.setattr(client, "read", _read_returning({ADDR_STATUS: STATUS_PC}))
 
@@ -113,8 +120,8 @@ def test_air_status_decodes_known_fields(monkeypatch):
     assert status.error_code == "00-00"
 
 
-def test_air_status_missing_fields_become_none(monkeypatch):
-    empty = {"pn": "dgc_status", "pt": 1, "pch": []}
+def test_air_status_missing_fields_become_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    empty: dict[str, Any] = {"pn": "dgc_status", "pt": 1, "pch": []}
     client = DaikinClient("http://unit")
     monkeypatch.setattr(client, "read", _read_returning({ADDR_STATUS: empty}))
 
@@ -170,7 +177,7 @@ DEVICE_TYPE_PC = {
 }
 
 
-def test_device_info_maps_fields(monkeypatch):
+def test_device_info_maps_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     client = DaikinClient("http://unit")
     monkeypatch.setattr(
         client,
@@ -198,20 +205,22 @@ def test_device_info_maps_fields(monkeypatch):
     assert info.region is None  # absent in the sample
 
 
-def test_set_power_builds_write(monkeypatch):
+def test_set_power_builds_write(monkeypatch: pytest.MonkeyPatch) -> None:
     client = DaikinClient("http://unit")
-    captured: dict = {}
+    captured: dict[str, object] = {}
 
-    def fake_write(to, entity_path, pv):
+    def fake_write(
+        to: str, *, entity_path: Sequence[str], pv: str
+    ) -> dict[str, object]:
         captured.update(to=to, entity_path=entity_path, pv=pv)
         return {"rsc": 2000}
 
     monkeypatch.setattr(client, "write", fake_write)
 
-    client.set_power(True)
+    client.set_power(on=True)
     assert captured["to"] == ADDR_STATUS
     assert captured["entity_path"] == ["e_1002", "e_A002", "p_01"]
     assert captured["pv"] == "01"
 
-    client.set_power(False)
+    client.set_power(on=False)
     assert captured["pv"] == "00"

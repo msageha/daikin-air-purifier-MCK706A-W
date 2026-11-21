@@ -1,4 +1,8 @@
-"""DaikinClient が返す復号済みの値。pydantic モデルなので FastAPI の応答にそのまま使える。
+"""
+DaikinClient が扱う pydantic モデル。
+
+DeviceInfo・AirStatus・DecodedLeaf は DaikinClient が返す復号済みの値で、FastAPI の応答にそのまま使える。
+MultireqResponse は本体の /dsiot/multireq の応答の形で、DaikinClient が応答の検証に使う。
 
 コース・風量・湿度設定のラベルは公式 DAIKIN Smart App (GPFCjConvertValue /
 strings.xml) の空気清浄機向け定義に合わせている。wire 値との対応は client.py が持つ。
@@ -164,7 +168,8 @@ class AirStatus(BaseModel):
 
 
 class DecodedLeaf(BaseModel):
-    """dsiot プロパティツリーの 1 リーフ。生の値と、可能なら復号した値を持つ。
+    """
+    dsiot プロパティツリーの 1 リーフ。生の値と、可能なら復号した値を持つ。
 
     診断用なので、本体のメタ情報は型で弾かずそのまま返す。
     """
@@ -195,3 +200,13 @@ class DecodedLeaf(BaseModel):
         default=None,
         description="16 進の pv を NUL 終端の ASCII として読めたときの文字列 (数値が偶然文字に見えることもある)",
     )
+
+
+class MultireqResponse(BaseModel):
+    """
+    /dsiot/multireq の応答本文。
+
+    各応答は fr・rsc・pc 等を持つ JSON object。DaikinClient.read は応答を生のまま返すので、object のまま扱う。
+    """
+
+    responses: list[dict[str, Any]]
