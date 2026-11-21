@@ -13,15 +13,6 @@ hadolint = "2.15.1"
 # ローカルと CI で検査内容が変わらないように pin する
 shellcheck = "0.11.0"
 
-[env]
-# 接続先 (DAIKIN_HOST / TIMEOUT) はアプリが読むリポジトリ直下の .env に書く (.env.example 参照)。
-# シェルにも同じ値を通したいときはここで定義する。ローカルだけの値は mise.local.toml に書くと
-# 上書きできる (ホワイトリスト方式の .gitignore により追跡されない)。
-#
-# 例:
-# DAIKIN_HOST = "http://192.168.1.100"
-# _.file = ".env"  # .env ファイルを読み込む
-
 [tasks.dev]
 description = "Run the API server with auto-reload on http://127.0.0.1:8000"
 run = "uv run uvicorn main:app --reload --app-dir src --host 127.0.0.1 --port 8000"
@@ -50,8 +41,9 @@ description = "Build the Docker image daikin-mck706a-api:latest"
 run = "docker build -t daikin-mck706a-api:latest ."
 
 [tasks.run-image]
-description = "Run the Docker image on port 8000 with .env passed via --env-file"
-run = "docker run --rm -p 8000:8000 --env-file .env daikin-mck706a-api:latest"
+description = "Run the Docker image on port 8000 with the settings from the environment"
+# -e NAME (値なし) は設定されている変数だけを渡すので、未設定の任意項目にはアプリ (settings.py) の既定値が使われる
+run = "docker run --rm -p 8000:8000 -e DAIKIN_HOST -e TIMEOUT daikin-mck706a-api:latest"
 
 [tasks.clean]
 description = "Remove caches and coverage artifacts"

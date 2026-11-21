@@ -28,7 +28,6 @@
 !/uv.lock
 !/Dockerfile
 !/.dockerignore
-!/.env.example
 !/src/
 !/src/**
 !/tests/

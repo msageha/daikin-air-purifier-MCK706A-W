@@ -17,7 +17,7 @@ from settings import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     service = DaikinService(
-        DaikinClient(settings.daikin_host, timeout=settings.timeout)
+        DaikinClient(str(settings.daikin_host), timeout=settings.timeout)
     )
     app.state.daikin = service
     try:

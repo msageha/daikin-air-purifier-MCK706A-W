@@ -23,4 +23,5 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 USER 10001
 EXPOSE 8000
 
+# DAIKIN_HOST (必須) はイメージに含めず、実行時に環境変数で渡す。
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -24,16 +24,13 @@ mise install  # ツールをインストールし、uv sync と git hooks のセ
 旧 hook を置き換えてください。置き換えないと prek が旧 hook（`.git/hooks/pre-commit.legacy`）も実行し、
 `uv sync` で削除された pre-commit package を呼んで commit が失敗します。
 
-接続先はリポジトリ直下の `.env` に記載します（`DAIKIN_HOST` は必須、`TIMEOUT` は省略可で既定 10 秒）。
-`.env.example` をコピーして編集してください。
+設定は環境変数で渡します（`.env` は読みません）。接続先の空気清浄機の URL（`DAIKIN_HOST`）は必須で、未設定や URL でない値では
+起動時に止まります。`TIMEOUT`（本体への HTTP タイムアウト、秒）は省略可で既定 10 秒です。
+git 管理外の `mise.local.toml` の `[env]` に書くと、`mise run` のタスクに渡ります。
 
-```sh
-cp .env.example .env
-```
-
-```dotenv
-DAIKIN_HOST=http://192.168.1.100
-TIMEOUT=10
+```toml
+[env]
+DAIKIN_HOST = "http://192.168.1.100"
 ```
 
 ## 起動
@@ -48,8 +45,10 @@ mise run dev   # = uv run uvicorn main:app --reload --app-dir src --host 127.0.0
 
 ```sh
 mise run build-image   # docker build -t daikin-mck706a-api:latest .
-mise run run-image     # docker run --rm -p 8000:8000 --env-file .env daikin-mck706a-api:latest
+mise run run-image     # 設定されている環境変数を -e で渡して docker run する
 ```
+
+mise を使わずに起動する場合（docker compose 等）は、`DAIKIN_HOST` を環境変数で渡してください。
 
 多段ビルド（`uv` ビルダ → `python:slim` ランナー、非 root 実行）。
 
@@ -513,7 +512,7 @@ Check formatting (ruff format --check), lint (ruff check) and types (ty check)
 
 - **Usage:** `run-image`
 
-Run the Docker image on port 8000 with .env passed via --env-file
+Run the Docker image on port 8000 with the settings from the environment
 
 ## `template-diff`
 
