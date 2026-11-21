@@ -22,7 +22,7 @@ def _get_service(request: Request) -> DaikinService:
     return cast("DaikinService", request.app.state.daikin)
 
 
-Service = Annotated[DaikinService, Depends(_get_service)]
+type Service = Annotated[DaikinService, Depends(_get_service)]
 
 
 @router.get("/health", tags=["system"])
