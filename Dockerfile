@@ -30,4 +30,6 @@ USER 10001
 EXPOSE 8000
 
 # DAIKIN_HOST (必須) はイメージに含めず、実行時に環境変数で渡す。
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 本体への通信の直列化と読み取りの共有はプロセスの中でしか効かないので、
+# uvicorn が WEB_CONCURRENCY から worker を増やさないよう 1 に固定する。
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

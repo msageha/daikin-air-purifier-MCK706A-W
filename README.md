@@ -49,6 +49,8 @@ mise run run-image     # 設定されている環境変数を -e で渡して do
 ```
 
 mise を使わずに起動する場合（docker compose 等）は、`DAIKIN_HOST` を環境変数で渡してください。
+本体への通信を 1 件ずつ順に行う仕組みはプロセスの中でしか効かないので、uvicorn は 1 プロセス
+（`--workers 1`）で起動し、同じ本体に複数のサーバーをつながないでください。
 
 多段ビルド（`uv` ビルダ → `python:slim` ランナー、非 root 実行）。
 
@@ -79,6 +81,11 @@ mise を使わずに起動する場合（docker compose 等）は、`DAIKIN_HOST
 本体が対応しない値や、現在の運転状態では選べない値（空気清浄のみのときの `moist`、
 加湿側コースが `smart` のときの湿度設定）は本体に送らず 409 で返します。対応範囲は本体が
 `md.mx`（対応値のビットマスク）として申告するものを使います。
+
+本体への通信は 1 件ずつ順に行います。`GET /api/info` `/api/status` `/api/tree` は、
+同じ endpoint への読み取りが本体との通信待ちか通信中なら、それに相乗りして同じ結果を返します。
+このサーバーへの書き込みの応答を受け取ってから読めば、書き込み後の状態が返ります。本体のボタンや
+公式アプリでの変更は、相乗りした読み取りが始まった後のものだと、その結果には反映されません。
 
 ### エラー
 
@@ -441,7 +448,7 @@ src/
   api/             FastAPI 層
     routes.py        エンドポイント定義
     schemas.py       request モデル
-    service.py       DaikinClient を lock + worker thread で直列実行する DaikinService
+    service.py       DaikinClient を lock + worker thread で直列実行し、同時に来た同じ読み取りをまとめる DaikinService
   settings.py      環境変数（pydantic-settings）
   main.py          FastAPI アプリと、例外 → HTTP status の対応
 tests/             オフライン単体テスト（src の構成をミラー）
