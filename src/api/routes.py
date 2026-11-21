@@ -17,12 +17,13 @@ from daikin import AirStatus, DecodedLeaf, DeviceInfo
 router = APIRouter(prefix="/api")
 
 
-def _get_service(request: Request) -> DaikinService:
+async def _get_service(request: Request) -> DaikinService:
+    # FastAPI は同期関数の依存を threadpool で実行するので、await しなくても async にする。
     # app.state は型を持たない入れ物で、main.py の lifespan が DaikinService を入れる。
     return cast("DaikinService", request.app.state.daikin)
 
 
-Service = Annotated[DaikinService, Depends(_get_service)]
+type Service = Annotated[DaikinService, Depends(_get_service)]
 
 
 @router.get("/health", tags=["system"])
@@ -33,18 +34,18 @@ async def health(service: Service) -> dict[str, str]:
 
 @router.get("/info", tags=["status"])
 async def info(service: Service) -> DeviceInfo:
-    return await service.run(service.client.device_info)
+    return await service.read(service.client.device_info)
 
 
 @router.get("/status", tags=["status"])
 async def status(service: Service) -> AirStatus:
-    return await service.run(service.client.air_status)
+    return await service.read(service.client.air_status)
 
 
 @router.get("/tree", tags=["status"])
 async def tree(service: Service) -> dict[str, DecodedLeaf]:
     """dgc_status の全リーフの復号済みツリー。未マップのセンサーを探すときに使う。"""
-    return await service.run(service.client.status_tree)
+    return await service.read(service.client.status_tree)
 
 
 @router.post("/read", tags=["raw"])

@@ -21,10 +21,10 @@ def _require_container(value: str) -> str:
     return value
 
 
-DsiotAddress = Annotated[str, AfterValidator(_validate_dsiot_address)]
-ContainerAddress = Annotated[DsiotAddress, AfterValidator(_require_container)]
-EntitySegment = Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$")]
-HexValue = Annotated[str, Field(pattern=r"^([0-9a-fA-F]{2})+$")]
+type DsiotAddress = Annotated[str, AfterValidator(_validate_dsiot_address)]
+type ContainerAddress = Annotated[DsiotAddress, AfterValidator(_require_container)]
+type EntitySegment = Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$")]
+type HexValue = Annotated[str, Field(pattern=r"^([0-9a-fA-F]{2})+$")]
 
 
 class PowerRequest(BaseModel):
