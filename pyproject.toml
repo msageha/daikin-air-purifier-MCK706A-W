@@ -16,10 +16,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "pytest>=8",
+  # 下限は [tool.*] の設定が使う設定キー (pytest の strict) と規則を持つ版。
+  "pytest>=9.1.1",
   "coverage>=7.15.0",
-  "ruff>=0.15.20",
-  "ty>=0.0.1a1",
+  "import-linter>=2.13",
+  "ruff>=0.17",
+  "ty>=0.0.99",
 ]
 
 [tool.uv]
@@ -27,22 +29,202 @@ dev = [
 exclude-newer = "7 days"
 package = false
 
+# UV_INDEX_URL やユーザー設定の index の有無で uv.lock の registry が変わらないよう、それらより優先される index を宣言する。
+# UV_DEFAULT_INDEX はこの宣言より優先されるので、設定すると uv.lock と食い違う。
+[[tool.uv.index]]
+name = "flatt"
+url = "https://pypi.flatt.tech/simple/"
+default = true
+
 [tool.ruff]
 line-length = 88
 src = ["src", "tests"]
 
+[tool.ruff.format]
+line-ending = "lf"
+
 [tool.ruff.lint]
-select = ["C", "E", "F", "I", "N", "UP", "W"]
-# 行長は formatter に任せる。
-ignore = ["E501"]
+# 例外メッセージは raise する箇所で URL や本体の応答を埋め込んで組み立て、HTTP の detail にそのまま出す。
+# そのため、メッセージを例外クラスへ移させる TRY003 と、raise の前に中間変数を挟ませる EM は採らない。
+select = [
+  "A",
+  "ANN",
+  "ARG",
+  "ASYNC",
+  "B",
+  "BLE",
+  "C4",
+  "C90",
+  # 複数行の docstring は、開く """ と閉じる """ をそれぞれ独立した行に置く。D のほかの規則 (docstring の有無など) は採らない。
+  "D209",
+  "D213",
+  "DTZ",
+  "E",
+  "ERA",
+  "EXE",
+  "F",
+  "FAST",
+  "FBT",
+  "FIX",
+  "FLY",
+  "FURB",
+  "G",
+  "I",
+  "ICN",
+  "INP",
+  "INT",
+  "ISC",
+  "LOG",
+  "N",
+  "PERF",
+  "PGH",
+  "PIE",
+  "PL",
+  "PT",
+  "PTH",
+  "PYI",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",
+  "SIM",
+  "SLF",
+  "SLOT",
+  "T10",
+  "T20",
+  "TD",
+  "TID",
+  "TRY",
+  "UP",
+  "W",
+  "YTT",
+]
+ignore = [
+  # 折り返せない日本語の説明文があるので、行長は formatter の整形だけに任せる。
+  "E501",
+  "TRY003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004"]
+
+[tool.ruff.lint.pylint]
+# 2 引数以上の関数を keyword-only で書かせる。
+# `def f(a, *, b)` の形は検出しない。外部の呼び出し規約に合わせる関数は noqa で除く。
+max-positional-args = 1
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
 
-[tool.pytest.ini_options]
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations".msg = "annotations are evaluated lazily on Python 3.14 (PEP 649); do not import annotations from __future__"
+
+[tool.importlinter]
+# src 直下の main.py と settings.py は package ではないので root にできない。
+# daikin から 2 つへの依存は、root の外のモジュールとして forbidden 契約で検査する。
+root_packages = ["api", "daikin"]
+# 外部パッケージ (fastapi・requests) の直接の import も、protected 契約で検査する。
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "api は daikin に依存し、daikin は api に依存しない"
+type = "layers"
+layers = [
+  "api",
+  "daikin",
+]
+
+[[tool.importlinter.contracts]]
+name = "daikin は FastAPI 層の組み立て (main) と環境変数の設定 (settings) に依存しない"
+type = "forbidden"
+source_modules = ["daikin"]
+forbidden_modules = ["main", "settings"]
+
+[[tool.importlinter.contracts]]
+name = "api の層は routes から schemas・service へ一方向に依存する"
+type = "layers"
+containers = ["api"]
+layers = [
+  "routes",
+  "schemas | service",
+]
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "daikin の層は client から protocol・models、exceptions へ一方向に依存する"
+type = "layers"
+containers = ["daikin"]
+layers = [
+  "client",
+  "protocol | models",
+  "exceptions",
+]
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "HTTP の framework を直接 import するのは api だけ (root の外の main は対象外)"
+type = "protected"
+protected_modules = ["fastapi"]
+allowed_importers = ["api"]
+
+[[tool.importlinter.contracts]]
+name = "HTTP client を直接 import するのは daikin.client だけ"
+type = "protected"
+protected_modules = ["requests"]
+allowed_importers = ["daikin.client"]
+
+[tool.ty.environment]
+root = ["./src", "."]
+python-platform = "linux"
+
+[tool.ty.analysis]
+# 抑制は `ty: ignore` に一本化する。
+respect-type-ignore-comments = false
+strict-equality-semantics = true
+strict-generic-narrowing = true
+
+[tool.ty.rules]
+# 既定で無効や warning の規則も含め、全規則を error にする。
+all = "error"
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.14"
+pythonPlatform = "Linux"
+typeCheckingMode = "strict"
+# pyright は `type: ignore` を、括弧で規則を指定しても、行のすべての診断の抑制として扱う。
+# 抑制は、指定した規則だけを抑制する `pyright: ignore[<規則>]` で書く。
+enableTypeIgnoreComments = false
+# strict に含まれない検査のうち、コードの書き方を歪めないものを error にする。
+# reportUnusedCallResult (戻り値を使わない呼び出しをすべて `_ =` にさせる)、reportMissingSuperCall (object だけを継承するクラスにも
+# super().__init__() を求める)、reportImplicitStringConcatenation (ruff の ISC003 が勧める複数行の暗黙の連結と食い違う) は採らない。
+reportCallInDefaultInitializer = "error"
+reportImplicitOverride = "error"
+reportImportCycles = "error"
+reportPropertyTypeMismatch = "error"
+reportUninitializedInstanceVariable = "error"
+reportUnreachable = "error"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+# ini_options ではなく [tool.pytest] に書くと、設定値を TOML の型で検証する。
+[tool.pytest]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = ["-ra", "--strict-markers", "--strict-config", "--tb=short"]
+python_functions = ["test_*"]
+strict = true
+# テストモジュールが import した test_* を、そのモジュールのテストとして重ねて収集しない。
+collect_imported_tests = false
+# 依存の非推奨警告を見落とさない。
+filterwarnings = ["error"]
+# importlib: テストの import のために sys.path を書き換えない。
+addopts = ["-ra", "--tb=short", "--import-mode=importlib"]
 
 [tool.coverage.run]
 source = ["src"]

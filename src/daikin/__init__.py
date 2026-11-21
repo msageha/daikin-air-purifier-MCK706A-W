@@ -1,8 +1,8 @@
 """Daikin MCK706A の dsiot ローカル API クライアント。FastAPI 層には依存しない。"""
 
-from .client import DaikinClient
-from .exceptions import DaikinConnectionError, DaikinError, DaikinUnsupportedError
-from .models import (
+from daikin.client import DaikinClient
+from daikin.exceptions import DaikinConnectionError, DaikinError, DaikinUnsupportedError
+from daikin.models import (
     AirStatus,
     Course,
     DecodedLeaf,

@@ -1,10 +1,8 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Request
 
-from daikin import AirStatus, DecodedLeaf, DeviceInfo
-
-from .schemas import (
+from api.schemas import (
     CourseRequest,
     FanSpeedRequest,
     HumidifyRequest,
@@ -13,13 +11,15 @@ from .schemas import (
     ReadRequest,
     WriteRequest,
 )
-from .service import DaikinService
+from api.service import DaikinService
+from daikin import AirStatus, DecodedLeaf, DeviceInfo
 
 router = APIRouter(prefix="/api")
 
 
 def _get_service(request: Request) -> DaikinService:
-    return request.app.state.daikin
+    # app.state は型を持たない入れ物で、main.py の lifespan が DaikinService を入れる。
+    return cast("DaikinService", request.app.state.daikin)
 
 
 Service = Annotated[DaikinService, Depends(_get_service)]
@@ -48,15 +48,17 @@ async def tree(service: Service) -> dict[str, DecodedLeaf]:
 
 
 @router.post("/read", tags=["raw"])
-async def read(body: ReadRequest, service: Service) -> dict[str, Any]:
+async def read(body: ReadRequest, *, service: Service) -> dict[str, Any]:
     """任意アドレスの生読み取り。応答元アドレスをキーにした dict を返す。"""
     return await service.run(service.client.read, body.targets)
 
 
 @router.post("/write", tags=["raw"])
-async def write(body: WriteRequest, service: Service) -> dict[str, Any]:
+async def write(body: WriteRequest, *, service: Service) -> dict[str, Any]:
     """任意プロパティへの生書き込み。confirm=true が必須。"""
-    result = await service.run(service.client.write, body.to, body.entity_path, body.pv)
+    result = await service.run(
+        service.client.write, body.to, entity_path=body.entity_path, pv=body.pv
+    )
     return {
         "written": {"to": body.to, "entity_path": body.entity_path, "pv": body.pv},
         "result": result,
@@ -64,27 +66,27 @@ async def write(body: WriteRequest, service: Service) -> dict[str, Any]:
 
 
 @router.post("/power", tags=["control"])
-async def power(body: PowerRequest, service: Service) -> dict[str, bool]:
-    await service.run(service.client.set_power, body.on)
+async def power(body: PowerRequest, *, service: Service) -> dict[str, bool]:
+    await service.run(service.client.set_power, on=body.on)
     return {"power": body.on}
 
 
 @router.post("/humidify", tags=["control"])
-async def humidify(body: HumidifyRequest, service: Service) -> dict[str, bool]:
+async def humidify(body: HumidifyRequest, *, service: Service) -> dict[str, bool]:
     """運転切替。加湿 + 空気清浄と、空気清浄のみを切り替える。"""
-    await service.run(service.client.set_humidify, body.on)
+    await service.run(service.client.set_humidify, on=body.on)
     return {"humidify": body.on}
 
 
 @router.post("/course", tags=["control"])
-async def course(body: CourseRequest, service: Service) -> dict[str, str]:
+async def course(body: CourseRequest, *, service: Service) -> dict[str, str]:
     """現在の運転切替側のコースを変える。選べないコースは 409。"""
     await service.run(service.client.set_course, body.course)
     return {"course": body.course}
 
 
 @router.post("/fan-speed", tags=["control"])
-async def fan_speed(body: FanSpeedRequest, service: Service) -> dict[str, str]:
+async def fan_speed(body: FanSpeedRequest, *, service: Service) -> dict[str, str]:
     """手動コースの風量を変える。コースが manual でないと運転には反映されない。"""
     await service.run(service.client.set_fan_speed, body.fan_speed)
     return {"fan_speed": body.fan_speed}
@@ -92,7 +94,7 @@ async def fan_speed(body: FanSpeedRequest, service: Service) -> dict[str, str]:
 
 @router.post("/humidity-setting", tags=["control"])
 async def humidity_setting(
-    body: HumiditySettingRequest, service: Service
+    body: HumiditySettingRequest, *, service: Service
 ) -> dict[str, str]:
     """加湿側のコースに対する湿度設定を変える。そのコースの湿度が自動のときは 409。"""
     await service.run(service.client.set_humidity_setting, body.humidity_setting)

@@ -1,4 +1,5 @@
-"""dsiot のワイヤフォーマット: multireq 本文の組み立てと、応答のプロパティツリーの読み取り。
+"""
+dsiot のワイヤフォーマット: multireq 本文の組み立てと、応答のプロパティツリーの読み取り。
 
 機種に依存しない。MCK706A 固有のアドレスやプロパティパスは client.py が持つ。
 """
@@ -6,7 +7,7 @@
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from .exceptions import DaikinError
+from daikin.exceptions import DaikinError
 
 OP_READ = 2
 OP_WRITE = 3
@@ -23,7 +24,7 @@ def hex_to_bool(value: str) -> bool:
     return hex_to_int(value) != 0
 
 
-def int_to_hex(value: int, length: int) -> str:
+def int_to_hex(value: int, *, length: int) -> str:
     """整数を length バイトのリトルエンディアン 16 進文字列 (pv の形式) にする。"""
     return value.to_bytes(length, "little").hex().upper()
 
@@ -34,7 +35,8 @@ def hex_to_temp(value: str) -> float:
 
 
 def hex_to_ascii(value: str) -> str | None:
-    """16 進バイト列を最初の NUL までの ASCII 文字列として読む。
+    """
+    16 進バイト列を最初の NUL までの ASCII 文字列として読む。
 
     印字可能な英数字を含む文字列に見えないときは None。
     """
@@ -47,37 +49,39 @@ def hex_to_ascii(value: str) -> str | None:
     return None
 
 
-def int_to_bool(value: Any) -> bool:
+def int_to_bool(value: int | str) -> bool:
     """整数リーフ (md.pt == "i"。JSON の int または 10 進文字列) を bool にする。"""
     return int(value) != 0
 
 
 class PropertyTree:
-    """multireq 応答の pc を、リーフのパス ("e_1002/e_A002/p_01") で引ける形にしたもの。
+    """
+    multireq 応答の pc を、リーフのパス ("e_1002/e_A002/p_01") で引ける形にしたもの。
 
     パスにルート (dgc_status 等) 自身の名前は含まない。
     """
 
     def __init__(self, pc: dict[str, Any]) -> None:
         self.leaves: dict[str, dict[str, Any]] = {}
-        self._collect(pc.get("pch", []), "")
+        self._collect(pc.get("pch", []), prefix="")
 
-    def _collect(self, nodes: list[dict[str, Any]], prefix: str) -> None:
+    def _collect(self, nodes: list[dict[str, Any]], *, prefix: str) -> None:
         for node in nodes:
             name = node.get("pn", "")
             path = f"{prefix}/{name}" if prefix else name
             if "pch" in node:
-                self._collect(node["pch"], path)
+                self._collect(node["pch"], prefix=path)
             else:
                 self.leaves[path] = node
 
-    def pv(self, path: str) -> Any:
+    def pv(self, path: str) -> object:
         """リーフの生の値。リーフが無ければ None。"""
         node = self.leaves.get(path)
         return None if node is None else node.get("pv")
 
-    def decode[T](self, path: str, decoder: Callable[[Any], T]) -> T | None:
-        """リーフの pv を decoder で変換する。リーフが無い、または pv が None なら None。
+    def decode[T](self, path: str, *, decoder: Callable[[Any], T]) -> T | None:
+        """
+        リーフの pv を decoder で変換する。リーフが無い、または pv が None なら None。
 
         Raises:
             DaikinError: pv が decoder の想定する形でない。
@@ -95,7 +99,9 @@ def build_read_requests(targets: Sequence[str]) -> dict[str, Any]:
     return {"requests": [{"op": OP_READ, "to": to} for to in targets]}
 
 
-def build_write_request(to: str, entity_path: Sequence[str], pv: str) -> dict[str, Any]:
+def build_write_request(
+    to: str, *, entity_path: Sequence[str], pv: str
+) -> dict[str, Any]:
     """to のコンテナ配下で entity_path が指すリーフだけを持つ書き込み本文を組む。"""
     if not entity_path:
         raise ValueError("entity_path must not be empty")

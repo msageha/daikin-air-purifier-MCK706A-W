@@ -1,4 +1,4 @@
-from .routes import router
-from .service import DaikinService
+from api.routes import router
+from api.service import DaikinService
 
 __all__ = ["DaikinService", "router"]

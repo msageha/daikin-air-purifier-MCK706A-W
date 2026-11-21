@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from api.schemas import ReadRequest, WriteRequest
 
 
-def test_read_request_requires_dsiot_prefix():
+def test_read_request_requires_dsiot_prefix() -> None:
     ok = ReadRequest.model_validate({"targets": ["/dsiot/edge.adp_i"]})
     assert ok.targets == ["/dsiot/edge.adp_i"]
     with pytest.raises(ValidationError):
@@ -13,7 +13,7 @@ def test_read_request_requires_dsiot_prefix():
         ReadRequest.model_validate({"targets": []})
 
 
-def test_write_request_validation():
+def test_write_request_validation() -> None:
     ok = WriteRequest.model_validate(
         {
             "to": "/dsiot/edge/adr_0100.dgc_status",
