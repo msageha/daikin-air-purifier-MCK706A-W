@@ -8,7 +8,7 @@ API の仕様・プロパティ対応表・実機で確認した挙動は README
 - `mise install`: ツールのインストール、`uv sync --locked`、git hooks (pre-commit / commit-msg) のセットアップ。旧 pre-commit (`make precommit-install`) の hook が残る clone では `mise exec -- prek install --force` で置き換える。
 - `mise run test`: coverage 付き pytest。オフラインで完結し、実機には触れない。
 - `mise run lint`: ruff format --check / ruff check / ty check。
-- `mise exec -- prek run --all-files`: 全 hook (dprint、actionlint、hadolint、ruff、ty、gitleaks 等) を実行する。CI の `prek` job と同じ検証。
+- `mise exec -- prek run --all-files`: 全 hook (dprint、actionlint、zizmor、hadolint、typos、ruff、ty、gitleaks 等) を実行する。CI の `prek` job と同じ検証だが、zizmor の online audit は token があるときだけ走る (README「開発」参照)。
 - `mise run dev`: 開発サーバー (http://127.0.0.1:8000)。接続先は環境変数 `DAIKIN_HOST` (必須。アプリは `.env` を読まない) で、git 管理外の `mise.local.toml` の `[env]` かシェルから渡す。
 - `mise run docs`: `mise.toml` の tasks を変更したあと README のタスク一覧を同期する。
 
@@ -22,7 +22,8 @@ API の仕様・プロパティ対応表・実機で確認した挙動は README
 ## 規約
 
 - commit message は Conventional Commits (`type(scope): subject`)。commit-msg hook の commitlint が検査する。
-- json / yaml / markdown / toml は dprint、python は ruff で整形する。手で整えず `prek run --all-files` に任せる。
+- json / yaml / markdown / toml / Dockerfile は dprint、python は ruff で整形する。手で整えず `prek run --all-files` に任せる。
+- lint の除外は設定ファイルに書く。hadolint は `.hadolint.yaml` の `ignored` (Dockerfile 内の `# hadolint ignore=` は無効)、typos の誤検知は `typos.toml`。zizmor は除外を受け付けないので、finding は workflow を直して解消する。Dockerfile の `LABEL` を足すときは `.hadolint.yaml` の `label-schema` にも足す (schema に無い label は拒否される)。
 - ruff / ty は `uv run --locked` で `uv.lock` のバージョンを使う。pre-commit 側にバージョンを持たない。
 - `.gitignore` はホワイトリスト方式。新しいファイルを追跡するときは対応する `!` の行を追記する。
 - ツールは `mise.toml` に exact version で pin し、変更したら `mise lock` で `mise.lock` を追従させる。Python 本体は uv が管理する。
