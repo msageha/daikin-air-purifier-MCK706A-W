@@ -9,7 +9,7 @@ API の仕様・プロパティ対応表・実機で確認した挙動は README
 - `mise run test`: coverage 付き pytest。オフラインで完結し、実機には触れない。
 - `mise run lint`: ruff format --check / ruff check / ty check。
 - `mise exec -- prek run --all-files`: 全 hook (dprint、actionlint、hadolint、ruff、ty、gitleaks 等) を実行する。CI の `prek` job と同じ検証。
-- `mise run dev`: 開発サーバー (http://127.0.0.1:8000)。接続先は環境変数 `DAIKIN_HOST` (アプリは `.env` を読まない)。`mise.toml` の `[env]` の値は例なので、実機のアドレスは git 管理外の `mise.local.toml` の `[env]` に書く (mise の `[env]` はシェルの同名の変数より優先される)。
+- `mise run dev`: 開発サーバー (http://127.0.0.1:8000)。接続先は環境変数 `DAIKIN_HOST` (必須。アプリは `.env` を読まない) で、git 管理外の `mise.local.toml` の `[env]` かシェルから渡す。
 - `mise run docs`: `mise.toml` の tasks を変更したあと README のタスク一覧を同期する。
 
 ## 構成

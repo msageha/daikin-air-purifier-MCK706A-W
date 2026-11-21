@@ -13,9 +13,6 @@ hadolint = "2.15.1"
 # ローカルと CI で検査内容が変わらないように pin する
 shellcheck = "0.11.0"
 
-[env]
-DAIKIN_HOST = "http://192.168.1.100"
-
 [tasks.dev]
 description = "Run the API server with auto-reload on http://127.0.0.1:8000"
 run = "uv run uvicorn main:app --reload --app-dir src --host 127.0.0.1 --port 8000"
