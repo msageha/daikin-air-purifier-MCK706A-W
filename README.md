@@ -63,7 +63,7 @@ mise を使わずに起動する場合（docker compose 等）は、`DAIKIN_HOST
 | GET    | `/api/status`           | 運転状態とセンサー値（電源 / 加湿 / コース / 風量 / 湿度設定 / 温湿度 / 空気質レベル / 各種サイン） |
 | GET    | `/api/tree`             | `adr_0100.dgc_status` 全リーフの復号済みツリー                                                      |
 | POST   | `/api/read`             | 任意の dsiot アドレスの生読み取り                                                                   |
-| POST   | `/api/write`            | 任意プロパティの書き込み（`confirm: true` 必須。無い・false は 422）                                |
+| POST   | `/api/write`            | 任意プロパティの書き込み（`confirm: true` 必須。JSON の true 以外は 422）                           |
 | POST   | `/api/power`            | 電源 ON/OFF（`{"on": true}`）                                                                       |
 | POST   | `/api/humidify`         | 運転切替。加湿 + 空気清浄 / 空気清浄のみ（`{"on": true}`）                                          |
 | POST   | `/api/course`           | コース変更（`{"course": "pollen"}`）                                                                |
@@ -89,12 +89,12 @@ mise を使わずに起動する場合（docker compose 等）は、`DAIKIN_HOST
 
 ### エラー
 
-| Status | 意味                                                                                        |
-| ------ | ------------------------------------------------------------------------------------------- |
-| 409    | 本体の対応範囲、または現在の運転状態では行えない操作                                        |
-| 422    | リクエストの検証エラー（アドレス形式、`confirm` 欠落、未知の値など）                        |
-| 502    | 本体がエラーを返した、または応答を解釈できない（`detail` と dsiot の `rsc`。`200x` が成功） |
-| 504    | 本体へ到達できない（タイムアウト・接続拒否）                                                |
+| Status | 意味                                                                                                                                                                              |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 409    | 本体の対応範囲、または現在の運転状態では行えない操作                                                                                                                              |
+| 422    | リクエストの検証エラー（アドレス形式、`confirm` 欠落、未知の値など）                                                                                                              |
+| 502    | 本体がエラーを返した、または応答を解釈できない（`detail` と dsiot の `rsc`。整数の `200x` だけが成功で、`rsc` の無い応答も失敗。`/api/read` は `rsc` を見ずに応答をそのまま返す） |
+| 504    | 本体へ到達できない（タイムアウト・接続拒否）                                                                                                                                      |
 
 `/api/write` で対応範囲外の値（運転切替 `01`、コード 11 以上のコースなど）を書いて
 しまうと、以降 `/api/status` はその値を復号できず 502 になります。`GET /api/tree` で
@@ -181,7 +181,7 @@ curl -X POST http://127.0.0.1:8000/api/write \
 ## 開発
 
 Python は 3.14 以上です。Python のツールチェーンは uv（依存関係と Python 本体）、ruff（lint + formatter）、
-ty と pyright（型チェック）、import-linter（層の依存の検査）、pytest で、ruff・ty・pyright は strict に設定しています。
+ty と pyright（型チェック）、import-linter（層の依存の検査）、pytest（pytest-xdist で並列実行し、Hypothesis で property-based test を書く）で、ruff・ty・pyright は strict に設定しています。
 Python の依存は、`pyproject.toml` の `[[tool.uv.index]]` で宣言した `https://pypi.flatt.tech/simple/` から取得します。
 既定の index として宣言しているので、`UV_INDEX_URL` やユーザー設定の既定の index を設定した環境でも、この宣言が使われます。
 ただし、既定の index を差し替える `UV_DEFAULT_INDEX` と、追加の index（`UV_INDEX`・`UV_EXTRA_INDEX_URL`・`--index`・ユーザー設定の
@@ -193,7 +193,7 @@ URL / checksum を固定しています。CI（`ci.yaml`）もローカルも同
 ```sh
 mise run format                          # import の並べ替え + ruff format
 mise run lint                            # ruff check + ruff format --check + lint-imports + ty check + pyright
-mise run test                            # coverage run -m pytest + report（オフライン。実機には触れません）
+mise run test                            # coverage run -m pytest + report（並列実行。オフラインで、実機には触れません）
 mise run pre-commit                      # pre-commit stage の hook を全追跡ファイルに対して実行する（CI の Run prek step と同じ）
 mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシークレットスキャン（CI の gitleaks job と同じ）
 ```
@@ -451,7 +451,7 @@ src/
     service.py       DaikinClient を lock + worker thread で直列実行し、同時に来た同じ読み取りをまとめる DaikinService
   settings.py      環境変数（pydantic-settings）
   main.py          FastAPI アプリと、例外 → HTTP status の対応
-tests/             オフライン単体テスト（src の構成をミラー）
+tests/             機能ごとの e2e テスト（API サーバーを起動し、fake の空気清浄機につなぐ）
 ```
 
 ```mermaid

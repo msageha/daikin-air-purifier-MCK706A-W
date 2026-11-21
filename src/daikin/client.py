@@ -344,11 +344,10 @@ def _current_humidify(status: PropertyTree) -> bool:
 
 def _raise_for_rsc(resp: dict[str, Any], *, what: str) -> None:
     rsc = resp.get("rsc")
-    if rsc is None:
-        return
-    # "2000" や true (bool は int の派生) を結果コードとして DaikinError.rsc (int) に載せないよう、JSON の整数以外は形の不正として扱う。
+    # 結果コードが無い応答は、本体が成功を報告していないので失敗とする。"2000" や true (bool は int の派生) を
+    # 結果コードとして DaikinError.rsc (int) に載せないよう、JSON の整数以外は形の不正として扱う。
     if type(rsc) is not int:
-        raise DaikinError(f"{what} returned a non-integer rsc: {rsc!r}")
+        raise DaikinError(f"{what} returned no integer rsc: {rsc!r}")
     if rsc not in RSC_SUCCESS:
         raise DaikinError(f"{what} returned rsc={rsc}", rsc=rsc)
 

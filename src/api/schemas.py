@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
 from daikin import Course, FanSpeed, HumiditySetting
 
@@ -10,6 +10,11 @@ from daikin import Course, FanSpeed, HumiditySetting
 def _validate_dsiot_address(value: str) -> str:
     if not value.startswith("/dsiot/") or ".." in value or "://" in value:
         raise ValueError(f"invalid dsiot address: {value!r}")
+    # JSON の構文は孤立した surrogate (U+D800 など) も通すが、UTF-8 で表せない文字列は本体へ送らない。
+    try:
+        value.encode()
+    except UnicodeEncodeError as err:
+        raise ValueError(f"invalid dsiot address: {value!r}") from err
     return value
 
 
@@ -18,6 +23,13 @@ def _require_container(value: str) -> str:
         raise ValueError(
             "address must reference a container, e.g. '...adr_0100.dgc_status'"
         )
+    return value
+
+
+def _require_bool(value: object) -> object:
+    # Literal[True] は strict でも、True と等しい 1 や 1.0 を受け付けるので、型を先に確かめる。
+    if not isinstance(value, bool):
+        raise ValueError("confirm must be the JSON true")  # noqa: TRY004 - pydantic の検証エラーにするため ValueError で送出する
     return value
 
 
@@ -79,4 +91,6 @@ class WriteRequest(BaseModel):
     pv: HexValue = Field(
         description="書き込む値 (リトルエンディアン 16 進、偶数長)", examples=["01"]
     )
-    confirm: Literal[True] = Field(description="誤操作防止。true 以外は受け付けない")
+    confirm: Annotated[Literal[True], BeforeValidator(_require_bool)] = Field(
+        description="誤操作防止。JSON の true 以外は受け付けない"
+    )

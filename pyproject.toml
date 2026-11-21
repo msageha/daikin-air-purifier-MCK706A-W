@@ -24,6 +24,8 @@ dev = [
   "import-linter>=2.13",
   "ruff>=0.17",
   "ty>=0.0.99",
+  "hypothesis>=6.170.15",
+  "pytest-xdist>=3.8.0",
 ]
 
 [tool.uv]
@@ -232,11 +234,18 @@ collect_imported_tests = false
 # 依存の非推奨警告を見落とさない。
 filterwarnings = ["error"]
 # importlib: テストの import のために sys.path を書き換えない。
-addopts = ["-ra", "--tb=short", "--import-mode=importlib"]
+# テストは worker ごとに API サーバーと fake の空気清浄機を 1 組起動して並列に走る (tests/conftest.py)。
+addopts = ["-ra", "--tb=short", "--import-mode=importlib", "--numprocesses=auto"]
 
 [tool.coverage.run]
 source = ["src"]
 branch = true
+# テストは API サーバーを subprocess で起動し、pytest も xdist の worker で走るので、子プロセスも計測する。
+patch = ["subprocess"]
+# uvicorn は SIGTERM で終了するときに signal を投げ直し、atexit を通らずに終わるので、SIGTERM でも計測結果を保存する。
+sigterm = true
+# src を実行しない pytest の親プロセス (xdist の controller) が毎回出す警告。計測の結果は combine 後の report で見る。
+disable_warnings = ["no-data-collected"]
 
 [tool.coverage.report]
 show_missing = true
