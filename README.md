@@ -182,18 +182,32 @@ URL / checksum を固定しています。CI（`ci.yaml`）もローカルも同
 mise run format                          # ruff format .
 mise run lint                            # ruff format --check + ruff check + ty check
 mise run test                            # coverage run -m pytest + report（オフライン。実機には触れません）
-mise exec -- prek run --all-files        # pre-commit hooks を全ファイルに対して実行する（CI の prek job と同じ）
+mise exec -- prek run --all-files        # pre-commit hooks を全ファイルに対して実行する（CI の prek job の online audit 以外と同じ）
 mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシークレットスキャン（CI の gitleaks job と同じ）
 ```
 
 - [prek](https://github.com/j178/prek): pre-commit hook の実行基盤。hooks は `.pre-commit-config.yaml` で定義します。
   ruff / ty の hook は `uv run --locked` で動かし、バージョンは `uv.lock` に一元化しています。
-- [dprint](https://dprint.dev/): json / markdown / toml / yaml のフォーマッタ（`dprint-fmt` hook）。
+- [dprint](https://dprint.dev/): json / markdown / toml / yaml / Dockerfile のフォーマッタ（`dprint-fmt` hook）。
   plugin の WASM URL は `dprint.json` に `url@sha256` の checksum 付きで pin します。`uv.lock` / `mise.lock` は対象外。
 - [actionlint](https://github.com/rhysd/actionlint): workflow の静的検査（`actionlint-system` hook）。
   `run:` スクリプトの検査に [shellcheck](https://github.com/koalaman/shellcheck) を使います。actionlint は PATH に
   shellcheck が無いとその検査を黙って省くため、ローカルと CI で結果が変わらないように mise で pin しています。
-- [hadolint](https://github.com/hadolint/hadolint): `Dockerfile` の静的検査（`hadolint` hook）。
+- [hadolint](https://github.com/hadolint/hadolint): `Dockerfile` の静的検査（`hadolint` hook）。`.hadolint.yaml` で
+  style 以上の全 severity を失敗にし、ベースイメージの registry を docker.io / ghcr.io に限り、OCI label
+  （`org.opencontainers.image.source` / `licenses`）を必須にしています。`label-schema` に無い label は拒否するので、
+  label を足すときはそこにも足します。Dockerfile 内の `# hadolint ignore=` は無効にし、書くこと自体も拒否する
+  （DL1001）ので、除外が要るときは `.hadolint.yaml` の `ignored` に書きます。
+- [typos](https://github.com/crate-ci/typos): 英単語の typo 検査（`typos` hook）。`typos.toml` で綴りを米国英語に
+  統一しています。誤検知は `typos.toml` の `extend-identifiers`（識別子）・`extend-words`（単語）・
+  `extend-ignore-re`（パターン）で除外します。
+- [zizmor](https://docs.zizmor.sh/): workflow と `.pre-commit-config.yaml` のセキュリティ監査（`zizmor` hook）。
+  `--persona auditor` で false positive を含む全 finding を、`--strict-collection` で解析できない入力を失敗にし、
+  `--no-ignores` / `--no-config` で inline の ignore コメントと設定ファイルによる除外を無効にしています。finding は
+  除外せず workflow を直して解消します。
+  GitHub API を使う online audit（impostor-commit 等）は token があるときだけ走るため、CI の `prek` job は
+  `ZIZMOR_GITHUB_TOKEN` を渡した専用 step でも実行します。ローカルで同じ範囲を監査するには
+  `ZIZMOR_GITHUB_TOKEN=$(gh auth token) mise exec -- zizmor --persona auditor --strict-collection --no-ignores --no-config .` を実行します。
 - [gitleaks](https://github.com/gitleaks/gitleaks): シークレットスキャン。pre-commit hook（`gitleaks` hook）が
   staged 差分を、CI の `gitleaks` job がコミット履歴全体を対象にします。
 - [commitlint](https://commitlint.js.org/): commit message を
@@ -227,11 +241,12 @@ CI green を条件に Renovate 自身が自動マージします（`platformAuto
 
 ### CI
 
-`.github/workflows/ci.yaml` は pull request 時に以下の job を並列実行します。job 名がそのまま
+`.github/workflows/ci.yaml` は pull request 時に以下の job を並列実行します。job の `name` がそのまま
 required status check の名前になります。
 
 - `prek`: `mise.lock` 通りのツールで `.pre-commit-config.yaml` の全 hook を `prek run --all-files` で実行します。
   ruff / ty の hook は `uv run --locked` で動くため、`uv.lock` と `pyproject.toml` の不整合もここで失敗します。
+  続けて、online audit を含めた zizmor を token 付きで実行します。
 - `gitleaks`: コミット履歴全体を対象にシークレットスキャンを行います。
 - `verify`: `uv run --locked pytest` でテストを実行します。
 
@@ -241,7 +256,7 @@ workflow の外部依存（`uses:`）は commit SHA で固定し、バージョ�
 ### GitHub リポジトリ設定
 
 ファイルとして管理できないリポジトリ設定です。public リポジトリなので ruleset と secret scanning が使えます。
-required checks は `ci.yaml` の job 名（`prek` / `gitleaks` / `verify`）に合わせます。
+required checks は `ci.yaml` の job の `name`（`prek` / `gitleaks` / `verify`）に合わせます。
 
 ```sh
 REPO=msageha/daikin-air-purifier-MCK706A-W

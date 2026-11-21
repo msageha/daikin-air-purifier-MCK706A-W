@@ -1,0 +1,4 @@
+[default]
+locale = "en-us"
+# dsiot の JSON キー pn (property name) を on の typo と判定するため、"pn" と `pn` だけを除外する
+extend-ignore-re = ['"pn"', "`pn`"]
