@@ -62,7 +62,7 @@ run = [
 ]
 
 [tasks.pre-commit]
-description = "commit 時の hook を全ファイルに実行する (CI の prek job と同じ検査)。整形する hook はファイルを書き換える"
+description = "commit 時の hook を、no-commit-to-branch を除いて git が追跡する全ファイルに実行する (CI の prek job の Run prek step と同じ検査)。整形する hook はファイルを書き換える"
 # no-commit-to-branch は commit 先のブランチを見る hook で、検証には関係しない。main を checkout したままでも検証できるよう外す。
 run = "SKIP=no-commit-to-branch prek run --all-files"
 
@@ -87,19 +87,26 @@ description = "README.md のタスク一覧を、mise.toml のタスクの説明
 # mise generate task-docs はタスクごとに見出しを作り、README の節と同じ階層に並ぶので、1 タスク 1 行の表にして埋め込む。
 # mise tasks ls は親ディレクトリや mise.local.toml のタスクも列挙するので、このリポジトリの mise.toml だけを読む。
 # 表は dprint が整形しない範囲 (dprint-ignore) に置く。整形すると、次の commit でこのタスクが書き戻して hook が失敗し続けるため。
-run = """
-uv run --locked python -c '
+run = '''
+#!/usr/bin/env -S uv run --locked python
 import tomllib
 from pathlib import Path
 
-tasks = tomllib.loads(Path("mise.toml").read_text())["tasks"]
-rows = "".join(f"| `{name}` | {tasks[name]["description"]} |\\n" for name in sorted(tasks))
+
+def cell(task: object) -> str:
+    # 説明の無いタスクと文字列だけで定義したタスクは空欄にする。改行は行を、| は列を崩すので置き換える。
+    text = task.get("description", "") if isinstance(task, dict) else ""
+    return " ".join(text.splitlines()).replace("|", r"\|")
+
+
+tasks = tomllib.loads(Path("mise.toml").read_text(encoding="utf-8"))["tasks"]
+rows = "".join(f"| `{name}` | {cell(tasks[name])} |\n" for name in sorted(tasks))
 readme = Path("README.md")
-head, rest = readme.read_text().split("<!-- mise-tasks -->\\n", 1)
+head, rest = readme.read_text(encoding="utf-8").split("<!-- mise-tasks -->\n", 1)
 _, tail = rest.split("<!-- /mise-tasks -->", 1)
-readme.write_text(f"{head}<!-- mise-tasks -->\\n| Task | 内容 |\\n| --- | --- |\\n{rows}<!-- /mise-tasks -->{tail}")
-'
-"""
+table = f"<!-- mise-tasks -->\n| Task | 内容 |\n| --- | --- |\n{rows}<!-- /mise-tasks -->"
+readme.write_text(head + table + tail, encoding="utf-8")
+'''
 
 # template から生成したリポジトリで実行し、共通ファイルが template の main からどれだけ離れたかを見る。
 # README.md / CODEOWNERS / mise.lock はリポジトリ固有に書き換える前提なので対象外。

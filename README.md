@@ -80,18 +80,18 @@ curl http://127.0.0.1:8000/api/status
 }
 ```
 
-| フィールド                             | 意味                                                                     |
-| -------------------------------------- | ------------------------------------------------------------------------ |
-| `power` / `humidify`                   | 運転中か / 加湿 + 空気清浄の運転か (`false` は空気清浄のみ)              |
-| `course`                               | 今の運転のコース                                                         |
-| `fan_speed`                            | 手動コース (`manual`) で使う風量の設定値。ほかのコースでは運転に効かない |
-| `humidity_setting`                     | 加湿運転のコースの湿度設定。本体が自動で決めるコースでは `null`          |
-| `temperature_c` / `humidity_pct`       | 室温 (℃) / 湿度 (%)                                                      |
-| `pm25_level` `dust_level` `odor_level` | 空気の汚れ。0〜5 の段階                                                  |
-| `pm25_raw` `dust_raw` `odor_raw`       | センサーの生の値 (単位は不明)                                            |
-| `*_sign`                               | お手入れのサイン (タンクが空・脱臭フィルター外れ・ストリーマのお手入れ)  |
-| `filter_drying`                        | 加湿フィルターの乾燥運転中か                                             |
-| `error_code`                           | エラーコード。`00-00` が正常                                             |
+| フィールド                             | 意味                                                                                               |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `power` / `humidify`                   | 運転中か / 加湿 + 空気清浄の運転か (`false` は空気清浄のみ)                                        |
+| `course`                               | 今の運転のコース                                                                                   |
+| `fan_speed`                            | 手動コース (`manual`) で使う風量の設定値。ほかのコースでは運転に効かない                           |
+| `humidity_setting`                     | 加湿運転のコースに対する湿度設定 (空気清浄のみの運転中も返す)。本体が自動で決めるコースでは `null` |
+| `temperature_c` / `humidity_pct`       | 室温 (℃) / 湿度 (%)                                                                                |
+| `pm25_level` `dust_level` `odor_level` | 空気の汚れ。0〜5 の段階                                                                            |
+| `pm25_raw` `dust_raw` `odor_raw`       | センサーの生の値 (単位は不明)                                                                      |
+| `*_sign`                               | お手入れのサイン (タンクが空・脱臭フィルター外れ・ストリーマのお手入れ)                            |
+| `filter_drying`                        | 加湿フィルターの乾燥運転中か                                                                       |
+| `error_code`                           | エラーコード。`00-00` が正常                                                                       |
 
 本体が値を返さなかったフィールドは `null` になります。
 
@@ -101,6 +101,8 @@ curl http://127.0.0.1:8000/api/status
 curl -X POST http://127.0.0.1:8000/api/power -H 'Content-Type: application/json' -d '{"on": true}'
 curl -X POST http://127.0.0.1:8000/api/course -H 'Content-Type: application/json' -d '{"course": "pollen"}'
 ```
+
+操作が成功した (200 が返った) 後に `/api/status` を読むと、操作後の状態が返ります。
 
 ### Endpoint
 
@@ -158,7 +160,7 @@ sequenceDiagram
 
 ## 注意
 
-- 認証はありません。本体もこのサーバーも、LAN 内の誰でも読み書きできます。LAN の外に公開するときは、reverse proxy などで手前に認証を置いてください。
+- 認証はありません。本体と、Docker で起動したこのサーバーは、LAN 内の誰でも読み書きできます。LAN の外に公開するときは、認証を持つ reverse proxy を手前に置き、このサーバーの port には proxy からしか届かないようにしてください。
 - 動作を確かめたのは MCK706A (ファームウェア `3_15_0`) だけです。ファームウェアの更新で本体の API が変わる可能性があります。
 
 ## 開発
@@ -178,7 +180,7 @@ sequenceDiagram
 | `docs` | README.md のタスク一覧を、mise.toml のタスクの説明から作り直す |
 | `format` | Python のファイルを整形し、import を並べ替える |
 | `lint` | Python の lint と整形 (ruff)、モジュール間の依存の向き (import-linter)、型 (ty) を検査する |
-| `pre-commit` | commit 時の hook を全ファイルに実行する (CI の prek job と同じ検査)。整形する hook はファイルを書き換える |
+| `pre-commit` | commit 時の hook を、no-commit-to-branch を除いて git が追跡する全ファイルに実行する (CI の prek job の Run prek step と同じ検査)。整形する hook はファイルを書き換える |
 | `run-image` | Docker イメージを port 8000 で起動する。環境変数 DAIKIN_HOST・TIMEOUT をそのまま渡す |
 | `template-diff` | dope-corp/template から取り込んだ共通ファイルと、template の main との差分を表示する |
 | `test` | テストを並列に実行し、coverage を表示する。実機には接続しない |

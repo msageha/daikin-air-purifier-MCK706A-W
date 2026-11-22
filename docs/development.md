@@ -26,6 +26,7 @@ tests/         機能ごとの e2e テスト (API サーバーを起動し、fak
 flowchart TB
     main[main.py] --> api
     main --> daikin
+    main --> settings[settings.py]
     subgraph api [api]
         routes --> schemas & service
     end
@@ -36,7 +37,7 @@ flowchart TB
     api --> daikin
 ```
 
-パッケージと層の依存が矢印の向きだけであること (上の層は間の層を飛ばして下の層を import してもよい) と、fastapi・requests を直接 import できるモジュールは、`mise run lint` が `pyproject.toml` の `[tool.importlinter]` に従って検査します。`main.py` と `settings.py` 自身の import は検査されません。`api`・`daikin` の直下にモジュールを足したら、`[tool.importlinter]` の `exhaustive = true` の契約の `layers` にも足します (足さないと検査が失敗する)。
+`api` から `daikin` への向きと各パッケージの中の層の向き (上の層は間の層を飛ばして下の層を import してもよい)、`daikin` が `main`・`settings` を import しないこと、fastapi を直接 import できるのは `api`、requests は `daikin.client` だけであることは、`mise run lint` が `pyproject.toml` の `[tool.importlinter]` に従って検査します。`main.py` と `settings.py` 自身の import は検査されません。`api`・`daikin` の直下にモジュールを足したら、`[tool.importlinter]` の `exhaustive = true` の契約の `layers` にも足します (足さないと検査が失敗する)。
 
 ## ツール
 
@@ -90,6 +91,8 @@ ZIZMOR_GITHUB_TOKEN=$(gh auth token) mise exec -- zizmor --persona auditor --str
 
 ### その他の決まり
 
+- テストは HTTP の API から確かめ、`src` の内部を直接 import・patch しません。入力の全域で成り立つ契約は Hypothesis の property で書きます。
+- コメントと文書は日本語で書き、技術用語と識別子は原語のまま書きます。
 - `.gitignore` はホワイトリスト方式です。新しいファイルを追跡するときは、対応する `!` の行を足します。
 - Python の依存は `https://pypi.flatt.tech/simple/` から取得します (`pyproject.toml` の `[[tool.uv.index]]`)。`UV_DEFAULT_INDEX`・`UV_INDEX`・`UV_EXTRA_INDEX_URL` などで別の index を指定すると `uv.lock` と食い違うので、設定しないでください。
 

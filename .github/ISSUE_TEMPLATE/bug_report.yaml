@@ -34,6 +34,7 @@ body:
       value: |
         - 起動方法 (mise run dev / Docker):
         - 本体のファームウェア (GET /api/info の firmware):
+        - このサーバーの commit (git rev-parse --short HEAD。Docker はイメージを build した時点の commit):
   - type: textarea
     id: notes
     attributes:

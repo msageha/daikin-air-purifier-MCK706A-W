@@ -61,6 +61,8 @@ curl -X POST http://127.0.0.1:8000/api/write \
   -d '{"to":"/dsiot/edge/adr_0100.dgc_status","entity_path":["e_1002","e_A002","p_01"],"pv":"00","confirm":true}'
 ```
 
+調べるために値を書き換えるときは、先に元の値を控え、`md.mx` の範囲内の値だけを書き込み、読み戻して確かめた後に元の値へ戻します。
+
 ## アドレス
 
 `/api/read` で `/dsiot/edge` を読むと、本体が持つアドレスがすべて返ります。
