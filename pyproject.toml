@@ -235,7 +235,16 @@ collect_imported_tests = false
 filterwarnings = ["error"]
 # importlib: テストの import のために sys.path を書き換えない。
 # テストは worker ごとに API サーバーと fake の空気清浄機を 1 組起動して並列に走る (tests/conftest.py)。
-addopts = ["-ra", "--tb=short", "--import-mode=importlib", "--numprocesses=auto"]
+# worker を増やすほど起動 (pytest と uvicorn の 2 プロセス) が重なり、テスト本体の短縮を打ち消すので 4 までにする。
+# サーバーを自前で起動する遅いテストが一部の worker に偏らないよう、手の空いた worker が残りを引き取る worksteal で配る。
+addopts = [
+  "-ra",
+  "--tb=short",
+  "--import-mode=importlib",
+  "--numprocesses=auto",
+  "--maxprocesses=4",
+  "--dist=worksteal",
+]
 
 [tool.coverage.run]
 source = ["src"]
