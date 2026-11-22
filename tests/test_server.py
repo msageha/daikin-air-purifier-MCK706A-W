@@ -28,19 +28,22 @@ def test_health_answers_while_the_unit_is_unreachable(stack: Stack) -> None:
 
 
 @pytest.mark.parametrize(
-    "env",
+    ("env", "setting"),
     [
-        {},
-        {"DAIKIN_HOST": "not a url"},
-        {"DAIKIN_HOST": "http://127.0.0.1", "TIMEOUT": "0"},
+        ({}, "daikin_host"),
+        ({"DAIKIN_HOST": "not a url"}, "daikin_host"),
+        ({"DAIKIN_HOST": "http://127.0.0.1", "TIMEOUT": "0"}, "timeout"),
     ],
     ids=["missing-host", "host-not-url", "non-positive-timeout"],
 )
 def test_server_refuses_to_start_with_invalid_settings(
-    *, env: dict[str, str], tmp_path: Path
+    *, env: dict[str, str], setting: str, tmp_path: Path
 ) -> None:
     with (
-        pytest.raises(RuntimeError, match="exited during startup"),
+        pytest.raises(
+            RuntimeError,
+            match=rf"(?s)exited during startup.*ValidationError.*\n{setting}\n",
+        ),
         run_api(env=env, log_path=tmp_path / "uvicorn.log"),
     ):
         pass

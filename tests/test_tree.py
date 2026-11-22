@@ -1,12 +1,12 @@
 """GET /api/tree: dgc_status の全リーフを、ルートからのパスをキーにして生の値・復号値・メタ情報とともに返す。"""
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from hypothesis import given, strategies as st
 
 from tests import dsiot
-from tests.harness import Stack
+from tests.harness import Stack, as_json
 
 # 名前は `/` を含まない (パスの区切りに使う)。
 _names = st.text(
@@ -74,12 +74,14 @@ def _flatten(
     for name, child in container.items():
         path = f"{prefix}/{name}" if prefix else name
         if isinstance(child, dict):
-            grand_pch, grand_expected = _flatten(child, prefix=path)  # pyright: ignore[reportUnknownArgumentType]
+            grand_pch, grand_expected = _flatten(
+                cast("dict[str, Any]", child), prefix=path
+            )
             pch.append({"pn": name, "pt": 1, "pch": grand_pch})
             expected |= grand_expected
         else:
             leaf, leaf_expected = child
-            pch.append({"pn": name, "pt": 2, **leaf})
+            pch.append({"pn": name, **leaf})
             expected[path] = leaf_expected
     return pch, expected
 
@@ -96,10 +98,12 @@ def test_tree_returns_every_leaf_by_its_path(
 
     assert response.status_code == 200
     body = response.json()
-    assert {
-        path: {k: v for k, v in leaf.items() if k != "ascii"}
-        for path, leaf in body.items()
-    } == expected
+    assert as_json(
+        {
+            path: {k: v for k, v in leaf.items() if k != "ascii"}
+            for path, leaf in body.items()
+        }
+    ) == as_json(expected)
 
 
 @pytest.mark.parametrize(

@@ -7,19 +7,12 @@
 各テストは本体の応答を止めて同時の状態を作り、すべての要求が API サーバーのアプリに届いたのを待ってから再開する。
 """
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-import requests
 
 from tests import dsiot
-from tests.harness import Api, Stack
-
-
-def _submit(
-    pool: ThreadPoolExecutor, *, api: Api, method: str, path: str, json: object = None
-) -> Future[requests.Response]:
-    return pool.submit(api.request, method, path=path, json=json)
+from tests.harness import Stack
 
 
 def test_unit_receives_one_request_at_a_time(stack: Stack) -> None:
@@ -37,8 +30,7 @@ def test_unit_receives_one_request_at_a_time(stack: Stack) -> None:
     with ThreadPoolExecutor(max_workers=len(calls)) as pool:
         with stack.unit.hold():
             futures = [
-                _submit(pool, api=stack.api, method=m, path=p, json=b)
-                for m, p, b in calls
+                pool.submit(stack.api.request, m, path=p, json=b) for m, p, b in calls
             ]
             stack.unit.wait_for_requests(1)
             stack.api.wait_for_entries(entered + len(calls))
@@ -57,11 +49,9 @@ def test_simultaneous_reads_of_one_endpoint_share_one_unit_request(
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         with stack.unit.hold():
-            first = _submit(pool, api=stack.api, method="GET", path=path)
+            first = pool.submit(stack.api.request, "GET", path=path)
             stack.unit.wait_for_requests(1)
-            rest = [
-                _submit(pool, api=stack.api, method="GET", path=path) for _ in range(4)
-            ]
+            rest = [pool.submit(stack.api.request, "GET", path=path) for _ in range(4)]
             stack.api.wait_for_entries(entered + 5)
         responses = [f.result() for f in (first, *rest)]
 
@@ -79,16 +69,15 @@ def test_reads_waiting_behind_another_request_share_one_unit_request(
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         with stack.unit.hold():
-            write = _submit(
-                pool,
-                api=stack.api,
-                method="POST",
+            write = pool.submit(
+                stack.api.request,
+                "POST",
                 path="/api/power",
                 json={"on": False},
             )
             stack.unit.wait_for_requests(1)
             reads = [
-                _submit(pool, api=stack.api, method="GET", path="/api/status")
+                pool.submit(stack.api.request, "GET", path="/api/status")
                 for _ in range(4)
             ]
             stack.api.wait_for_entries(entered + 5)
@@ -107,10 +96,9 @@ def test_simultaneous_writes_are_each_sent(stack: Stack) -> None:
     with ThreadPoolExecutor(max_workers=2) as pool:
         with stack.unit.hold():
             futures = [
-                _submit(
-                    pool,
-                    api=stack.api,
-                    method="POST",
+                pool.submit(
+                    stack.api.request,
+                    "POST",
                     path="/api/power",
                     json={"on": False},
                 )
@@ -131,12 +119,11 @@ def test_read_after_a_write_response_sees_the_write(stack: Stack) -> None:
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         with stack.unit.hold():
-            before = _submit(pool, api=stack.api, method="GET", path="/api/status")
+            before = pool.submit(stack.api.request, "GET", path="/api/status")
             stack.unit.wait_for_requests(1)
-            write = _submit(
-                pool,
-                api=stack.api,
-                method="POST",
+            write = pool.submit(
+                stack.api.request,
+                "POST",
                 path="/api/power",
                 json={"on": False},
             )

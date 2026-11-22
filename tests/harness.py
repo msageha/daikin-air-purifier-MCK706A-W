@@ -36,7 +36,8 @@ _RSC_WRITE_OK = 2004
 _RSC_BAD_PARAMETER = 4000
 _RSC_NOT_FOUND = 4041
 _PT_CONTAINER = 1
-_PT_LEAVES = {2, 3}
+# 実機で受け付けを確かめた、書き込み本文のリーフの pt (README「仕組み」)。
+_PT_WRITE_LEAF = 3
 
 
 class HttpReply(NamedTuple):
@@ -247,7 +248,7 @@ def _write_target(pc: object, *, container: str) -> tuple[list[str], str] | None
     書き込み本文の pc から、書き込むリーフのパスと pv を取り出す。
 
     pc は根の名前がコンテナ名で、各階層の子が 1 つだけの鎖でなければならない。ノードの型 (pt) は
-    コンテナが 1、リーフが 2 か 3 (README「仕組み」)。形が違えば None。
+    コンテナが 1、リーフが 3。形が違えば None。
     """
     names: list[str] = []
     node: Any = pc
@@ -256,10 +257,7 @@ def _write_target(pc: object, *, container: str) -> tuple[list[str], str] | None
             return None
         while "pch" in node:
             children: Any = node["pch"]
-            if (
-                not _is_node_type(node["pt"], types={_PT_CONTAINER})
-                or len(children) != 1
-            ):
+            if not _is_node_type(node["pt"], pt=_PT_CONTAINER) or len(children) != 1:
                 return None
             node = children[0]
             names.append(node["pn"])
@@ -267,13 +265,15 @@ def _write_target(pc: object, *, container: str) -> tuple[list[str], str] | None
         leaf_type: Any = node["pt"]
     except KeyError, TypeError:
         return None
-    valid = names and _is_node_type(leaf_type, types=_PT_LEAVES) and isinstance(pv, str)
+    valid = (
+        names and _is_node_type(leaf_type, pt=_PT_WRITE_LEAF) and isinstance(pv, str)
+    )
     return (names, pv) if valid else None
 
 
-def _is_node_type(value: object, *, types: set[int]) -> bool:
+def _is_node_type(value: object, *, pt: int) -> bool:
     # bool は int の派生なので、true を 1 とみなさないよう型を先に確かめる。
-    return type(value) is int and value in types
+    return type(value) is int and value == pt
 
 
 def _find(root: dict[str, Any], *, names: list[str]) -> dict[str, Any] | None:
@@ -365,6 +365,7 @@ class Stack:
 # tests/asgi_probe.py が、HTTP の要求がアプリに届くたびに stderr に書く行の接頭辞。
 ENTRY_PREFIX = "asgi-probe: entered"
 _STARTED_RE = re.compile(r"Uvicorn running on (http://\S+)")
+_SHUTDOWN_COMPLETE = "Application shutdown complete."
 
 
 @contextmanager
@@ -428,12 +429,10 @@ def _stop(process: subprocess.Popen[bytes], *, log_path: Path) -> None:
         process.kill()
         process.wait()
         returncode = None
-    # uvicorn は終了処理の後に SIGTERM を投げ直して終わる。
-    if returncode not in {0, -signal.SIGTERM}:
-        raise RuntimeError(
-            f"API server did not stop cleanly ({returncode}):\n"
-            f"{log_path.read_text(encoding='utf-8')}"
-        )
+    # uvicorn は終了処理の後に SIGTERM を投げ直して終わり、lifespan の終了処理が失敗しても同じ終了コードになる。
+    log = log_path.read_text(encoding="utf-8")
+    if returncode not in {0, -signal.SIGTERM} or _SHUTDOWN_COMPLETE not in log:
+        raise RuntimeError(f"API server did not stop cleanly ({returncode}):\n{log}")
 
 
 def _wait_until_started(process: subprocess.Popen[bytes], *, log_path: Path) -> str:

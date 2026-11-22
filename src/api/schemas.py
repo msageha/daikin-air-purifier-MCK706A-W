@@ -10,11 +10,6 @@ from daikin import Course, FanSpeed, HumiditySetting
 def _validate_dsiot_address(value: str) -> str:
     if not value.startswith("/dsiot/") or ".." in value or "://" in value:
         raise ValueError(f"invalid dsiot address: {value!r}")
-    # JSON の構文は孤立した surrogate (U+D800 など) も通すが、UTF-8 で表せない文字列は本体へ送らない。
-    try:
-        value.encode()
-    except UnicodeEncodeError as err:
-        raise ValueError(f"invalid dsiot address: {value!r}") from err
     return value
 
 

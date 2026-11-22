@@ -1,6 +1,10 @@
-from typing import Annotated, Any, cast
+import json
+import math
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Any, cast, override
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.routing import APIRoute
 
 from api.schemas import (
     CourseRequest,
@@ -14,7 +18,46 @@ from api.schemas import (
 from api.service import DaikinService
 from daikin import AirStatus, DecodedLeaf, DeviceInfo
 
-router = APIRouter(prefix="/api")
+
+def _parse_finite_float(text: str) -> float:
+    """JSON の数値と NaN・Infinity の literal を float にし、有限でない値 (1e999 を含む) は JSONDecodeError にする。"""
+    if not math.isfinite(value := float(text)):
+        raise json.JSONDecodeError("non-finite number", text, 0)
+    return value
+
+
+class _StrictJsonRequest(Request):
+    # json.loads は JSON の値でない NaN・Infinity と、UTF-8 で表せない孤立した surrogate も受け付ける。そうした値は
+    # 本体へ送れず、422 の応答の input に載ると直列化できずに 500 になるので、FastAPI が JSON の構文の誤りと同じ
+    # 422 (json_invalid) にする JSONDecodeError で拒否する。非有限数は、同名のキーで上書きされる値も拒否できるよう
+    # 復号の途中で拒否する。
+    @override
+    async def json(self) -> Any:
+        body = await self.body()
+        value = json.loads(
+            body, parse_float=_parse_finite_float, parse_constant=_parse_finite_float
+        )
+        try:
+            json.dumps(value, ensure_ascii=False).encode()
+        except UnicodeEncodeError as err:
+            raise json.JSONDecodeError(
+                "unpaired surrogate", body.decode(errors="replace"), 0
+            ) from err
+        return value
+
+
+class _StrictJsonRoute(APIRoute):
+    @override
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def strict_json_handler(request: Request) -> Response:
+            return await handler(_StrictJsonRequest(request.scope, request.receive))
+
+        return strict_json_handler
+
+
+router = APIRouter(prefix="/api", route_class=_StrictJsonRoute)
 
 
 async def _get_service(request: Request) -> DaikinService:
