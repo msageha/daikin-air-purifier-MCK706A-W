@@ -35,7 +35,7 @@ _WRITE: dict[str, object] = {
 
 
 @given(
-    # /dsiot/edge は README の、本体が持つ全アドレスを列挙するアドレス。
+    # /dsiot/edge は、本体が持つ全アドレスを列挙するアドレス (docs/dsiot.md「アドレス」)。
     pcs=st.dictionaries(
         _addresses | st.just("/dsiot/edge"),
         st.dictionaries(st.text(), _json_values, max_size=3),
@@ -237,7 +237,7 @@ def test_write_rejected_by_the_unit_is_502_with_its_rsc(stack: Stack) -> None:
 def test_write_succeeds_only_with_a_200x_result_code(
     *, stack: Stack, rsc: int, status_code: int
 ) -> None:
-    """本体の rsc は 200x が成功 (README「仕組み」)。"""
+    """本体の rsc は 200x が成功 (docs/dsiot.md「リクエストとレスポンス」)。"""
     stack.unit.reset()
     stack.unit.write_rsc = rsc
 

@@ -26,20 +26,14 @@ body:
     id: actual
     attributes:
       label: 実際の動作
-      description: 実際にどのような動作になったか
+      description: 実際にどのような動作になったか (API の status code と応答の本文。MAC アドレス・SSID・IP アドレスは伏せてください)
   - type: textarea
     id: env
     attributes:
       label: 環境情報
       value: |
-        - OS:
-        - バージョン:
-        - デバイス/ブラウザ:
-  - type: textarea
-    id: screenshots
-    attributes:
-      label: スクリーンショット
-      description: 該当する場合は添付してください
+        - 起動方法 (mise run dev / Docker):
+        - 本体のファームウェア (GET /api/info の firmware):
   - type: textarea
     id: notes
     attributes:

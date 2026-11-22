@@ -199,30 +199,6 @@ strict-generic-narrowing = true
 # 既定で無効や warning の規則も含め、全規則を error にする。
 all = "error"
 
-[tool.pyright]
-include = ["src", "tests"]
-extraPaths = ["src"]
-venvPath = "."
-venv = ".venv"
-# 実行環境の Python (.python-version) ではなく、対応する下限 (requires-python) の版で検査する。
-pythonVersion = "3.14"
-pythonPlatform = "Linux"
-typeCheckingMode = "strict"
-# pyright は `type: ignore` を、括弧で規則を指定しても、行のすべての診断の抑制として扱う。
-# 抑制は、指定した規則だけを抑制する `pyright: ignore[<規則>]` で書く。
-enableTypeIgnoreComments = false
-# strict に含まれない検査のうち、コードの書き方を歪めないものを error にする。
-# reportUnusedCallResult (戻り値を使わない呼び出しをすべて `_ =` にさせる)、reportMissingSuperCall (object だけを継承するクラスにも
-# super().__init__() を求める)、reportImplicitStringConcatenation (ruff の ISC003 が勧める複数行の暗黙の連結と食い違う) は採らない。
-reportCallInDefaultInitializer = "error"
-reportImplicitOverride = "error"
-reportImportCycles = "error"
-reportMissingModuleSource = "error"
-reportPropertyTypeMismatch = "error"
-reportUninitializedInstanceVariable = "error"
-reportUnreachable = "error"
-reportUnnecessaryTypeIgnoreComment = "error"
-
 # ini_options ではなく [tool.pytest] に書くと、設定値を TOML の型で検証する。
 [tool.pytest]
 testpaths = ["tests"]

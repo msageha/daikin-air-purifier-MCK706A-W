@@ -6,7 +6,6 @@ uv = "0.13.7"
 prek = "0.5.10"
 actionlint = "1.7.12"
 dprint = "0.64.3"
-fnox = "v1.47.0"
 gitleaks = "8.30.1"
 hadolint = "2.15.1"
 typos = "1.52.2"
@@ -14,16 +13,13 @@ zizmor = "1.32.0"
 # actionlint は PATH に shellcheck があるときだけ run: スクリプトを検査するため、
 # ローカルと CI で検査内容が変わらないように pin する
 shellcheck = "0.11.0"
-"npm:pyright" = "1.1.414"
-# npm: backend が pyright を npm で入れるので、node も pin する
-node = "26.13.1"
 
 [tasks.dev]
-description = "Run the API server with auto-reload on http://127.0.0.1:8000"
+description = "開発サーバーを http://127.0.0.1:8000 で起動する。ソースを変えると自動で再起動する"
 run = "uv run uvicorn main:app --reload --app-dir src --host 127.0.0.1 --port 8000"
 
 [tasks.test]
-description = "Run pytest under coverage and print the report"
+description = "テストを並列に実行し、coverage を表示する。実機には接続しない"
 # 計測は worker・API サーバーのプロセスごとの断片に分かれ、report がまとめて集計する。
 # 中断した実行や、同じ checkout で並行して走る実行 (手動と pre-push の hook 等) の断片を混ぜないよう、
 # 実行ごとの一時ディレクトリに置く。
@@ -45,7 +41,7 @@ fi
 """
 
 [tasks.lint]
-description = "Check lint and formatting (ruff), layer dependencies (import-linter) and types (ty / pyright)"
+description = "Python の lint と整形 (ruff)、モジュール間の依存の向き (import-linter)、型 (ty) を検査する"
 # 1 つ目の失敗で止めず、全部の検査の結果を出してから失敗を返す。
 run = """
 #!/usr/bin/env bash
@@ -54,12 +50,11 @@ uv run --locked ruff check . || status=1
 uv run --locked ruff format --check . || status=1
 PYTHONPATH=src uv run --locked lint-imports || status=1
 uv run --locked ty check || status=1
-pyright || status=1
 exit "$status"
 """
 
 [tasks.format]
-description = "Format python sources with ruff and sort imports"
+description = "Python のファイルを整形し、import を並べ替える"
 # ruff format は import を並べ替えないので、import の並びの規則 (I) の修正を先に適用する。
 run = [
   "uv run --locked ruff check --select I --fix .",
@@ -67,42 +62,57 @@ run = [
 ]
 
 [tasks.pre-commit]
-description = "Run the pre-commit stage hooks on all tracked files with prek (same as the CI prek job)"
+description = "commit 時の hook を全ファイルに実行する (CI の prek job と同じ検査)。整形する hook はファイルを書き換える"
 # no-commit-to-branch は commit 先のブランチを見る hook で、検証には関係しない。main を checkout したままでも検証できるよう外す。
 run = "SKIP=no-commit-to-branch prek run --all-files"
 
 [tasks.build-image]
-description = "Build the Docker image daikin-mck706a-api:latest"
+description = "Docker イメージ daikin-mck706a-api:latest を build する"
 run = "docker build -t daikin-mck706a-api:latest ."
 
 [tasks.run-image]
-description = "Run the Docker image on port 8000 with the settings from the environment"
+description = "Docker イメージを port 8000 で起動する。環境変数 DAIKIN_HOST・TIMEOUT をそのまま渡す"
 # -e NAME (値なし) は設定されている変数だけを渡すので、未設定の任意項目にはアプリ (settings.py) の既定値が使われる
 run = "docker run --rm -p 8000:8000 -e DAIKIN_HOST -e TIMEOUT daikin-mck706a-api:latest"
 
 [tasks.clean]
-description = "Remove caches and coverage artifacts"
+description = "キャッシュと coverage の生成物を削除する"
 run = [
   "find . -name '__pycache__' -type d -prune -exec rm -r {} +",
   "rm -rf .pytest_cache .ruff_cache .ty_cache .import_linter_cache .hypothesis htmlcov .coverage .coverage.*",
 ]
 
 [tasks.docs]
-description = "Sync the task list embedded in README.md with mise.toml"
-run = "mise generate task-docs --inject --output README.md"
+description = "README.md のタスク一覧を、mise.toml のタスクの説明から作り直す"
+# mise generate task-docs はタスクごとに見出しを作り、README の節と同じ階層に並ぶので、1 タスク 1 行の表にして埋め込む。
+# mise tasks ls は親ディレクトリや mise.local.toml のタスクも列挙するので、このリポジトリの mise.toml だけを読む。
+# 表は dprint が整形しない範囲 (dprint-ignore) に置く。整形すると、次の commit でこのタスクが書き戻して hook が失敗し続けるため。
+run = """
+uv run --locked python -c '
+import tomllib
+from pathlib import Path
+
+tasks = tomllib.loads(Path("mise.toml").read_text())["tasks"]
+rows = "".join(f"| `{name}` | {tasks[name]["description"]} |\\n" for name in sorted(tasks))
+readme = Path("README.md")
+head, rest = readme.read_text().split("<!-- mise-tasks -->\\n", 1)
+_, tail = rest.split("<!-- /mise-tasks -->", 1)
+readme.write_text(f"{head}<!-- mise-tasks -->\\n| Task | 内容 |\\n| --- | --- |\\n{rows}<!-- /mise-tasks -->{tail}")
+'
+"""
 
 # template から生成したリポジトリで実行し、共通ファイルが template の main からどれだけ離れたかを見る。
-# README.md / CODEOWNERS / CLAUDE.md / mise.lock はリポジトリ固有に書き換える前提なので対象外。
-# claude.yaml / claude-sweep.yaml は GitHub 経由で Claude を使わないため持たない (対象外)。
+# README.md / CODEOWNERS / mise.lock はリポジトリ固有に書き換える前提なので対象外。
+# CLAUDE.md・fnox.toml・claude.yaml・claude-sweep.yaml は、このリポジトリでは使わないので持たない (対象外)。
 [tasks.template-diff]
-description = "Diff shared files against dope-corp/template main"
+description = "dope-corp/template から取り込んだ共通ファイルと、template の main との差分を表示する"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 repo="dope-corp/template"
 files=(
   .editorconfig .gitattributes .gitignore .pre-commit-config.yaml commitlint.config.mjs
-  dprint.json fnox.toml mise.toml renovate.json
+  dprint.json mise.toml renovate.json
   .github/PULL_REQUEST_TEMPLATE.md
   .github/ISSUE_TEMPLATE/config.yml .github/ISSUE_TEMPLATE/bug_report.yaml .github/ISSUE_TEMPLATE/feature_request.yaml
   .github/workflows/ci.yaml

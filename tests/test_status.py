@@ -1,4 +1,4 @@
-"""GET /api/status: dgc_status の運転状態とセンサー値を、README のプロパティ対応表どおりに復号して返す。"""
+"""GET /api/status: dgc_status の運転状態とセンサー値を、docs/dsiot.md のプロパティ対応表どおりに復号して返す。"""
 
 from typing import Any
 
@@ -65,7 +65,7 @@ def _unit_states(draw: st.DrawFn) -> dict[str, Any]:
 
 
 def _leaves(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """状態を README の符号化で dgc_status のリーフにする。"""
+    """状態を docs/dsiot.md の符号化で dgc_status のリーフにする。"""
     pvs: dict[str, str | None] = {}
     humidify = state["humidify"]
     pvs[dsiot.HUMIDIFY] = (
@@ -105,7 +105,7 @@ def _leaves(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _expected(state: dict[str, Any]) -> dict[str, Any]:
-    """README の対応表から導いた /api/status の応答。"""
+    """docs/dsiot.md の対応表から導いた /api/status の応答。"""
     humidify = state["humidify"]
     humidify_course = state["course"][True]
     temperature = state["temperature_half_c"]
@@ -150,7 +150,7 @@ def test_status_decodes_unit_state(*, stack: Stack, state: dict[str, Any]) -> No
 
 
 def test_status_of_readme_example(stack: Stack) -> None:
-    """README の「空気状態の取得例」の本体の状態は、その例と同じ応答になる。"""
+    """README「状態を読む」の例の本体の状態は、その例と同じ応答になる。"""
     stack.unit.reset()
 
     response = stack.api.get("/api/status")
@@ -181,7 +181,7 @@ def test_status_of_readme_example(stack: Stack) -> None:
 
 
 def test_status_ignores_unmapped_properties(stack: Stack) -> None:
-    """意味が未特定のプロパティは /api/status に含めない (README「プロパティ対応表」)。"""
+    """意味が未特定のプロパティは /api/status に含めない (docs/dsiot.md「プロパティ対応表」)。"""
     stack.unit.reset()
     expected = stack.api.get("/api/status").json()
     leaves = dsiot.mck706a_status() | {

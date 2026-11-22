@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  # push トリガーは置かない: main は PR 必須 (ruleset。README「GitHub リポジトリ設定」参照) なので
+  # push トリガーは置かない: main は PR 必須 (ruleset。docs/development.md「GitHub リポジトリ設定」参照) なので
   # PR で検証済みの内容しか入らない。
   # デフォルト types の明示: closed 等 CI が不要な PR イベントでは走らせない
   pull_request:
@@ -14,7 +14,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# job の name がそのまま required status check の名前になる (README「GitHub リポジトリ設定」参照)。
+# job の name がそのまま required status check の名前になる (docs/development.md「GitHub リポジトリ設定」参照)。
 jobs:
   prek:
     name: prek

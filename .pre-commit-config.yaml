@@ -5,9 +5,6 @@ default_install_hook_types: [pre-commit, pre-push, commit-msg, pre-merge-commit]
 # pre-push の hook は push する commit ではなく checkout 中の作業ツリーを読むので、push する変更の最終的な判定は PR の CI が行う。
 default_stages: [pre-commit, pre-push]
 
-# .mise/locks/ は mise lock が生成し、mise.lock が digest で参照する。整形すると digest が合わなくなるので、どの hook にも渡さない。
-exclude: ^\.mise/locks/
-
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -29,9 +26,8 @@ repos:
         args: [--assume-in-merge]
       - id: mixed-line-ending
         stages: [pre-commit]
-      # main は PR 必須なので、手元で main に commit した時点で止める (競合の無い git merge は pre-commit ではなく
-      # pre-merge-commit を呼ぶので、そこでも止める)。push 時は送信先ではなく checkout 中のブランチを見るので実行しない。
-      # 検証用の mise run pre-commit は main 上でも使えるよう、この hook を SKIP する。
+      # main は PR 必須なので、手元での main への commit を止める。競合の無い git merge は pre-commit ではなく
+      # pre-merge-commit を呼ぶので、そこでも止める。push 時は送信先ではなく checkout 中のブランチを見るので実行しない。
       - id: no-commit-to-branch
         args: [--branch, main]
         stages: [pre-commit, pre-merge-commit]
@@ -93,7 +89,7 @@ repos:
         entry: mise exec -- uv run --locked ruff format
         types: [python]
         stages: [pre-commit]
-      # ruff・import-linter・ty・pyright の設定は pyproject.toml にあり、版は uv.lock と mise.toml で決まるので、
+      # ruff・import-linter・ty の設定は pyproject.toml にあり、版は uv.lock と mise.toml で決まるので、
       # lint は設定だけの変更でも実行する。型検査と層の検査はファイル単位では行えないので、作業ツリー全体を検査する。
       - id: lint
         name: Lint, check layers and type-check python with mise run lint
