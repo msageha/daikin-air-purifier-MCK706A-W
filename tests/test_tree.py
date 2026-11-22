@@ -12,7 +12,7 @@ from tests.harness import Stack, as_json
 _names = st.text(
     st.characters(codec="utf-8", exclude_characters="/"), min_size=1, max_size=6
 )
-# 実機のリーフは設定値が pt 2、センサーと固定情報が pt 3 (README「仕組み」)。
+# 実機のリーフは設定値が pt 2、センサーと固定情報が pt 3 (docs/dsiot.md「リクエストとレスポンス」)。
 _leaf_types = st.sampled_from([2, 3])
 _hex_meta = st.fixed_dictionaries(
     {"pt": st.just("b")},

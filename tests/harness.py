@@ -1,7 +1,7 @@
 """
 e2e テストの実行環境: dsiot の multireq を話す fake の空気清浄機と、それに接続した API サーバー。
 
-fake は README の「仕組み」の形 (`POST /dsiot/multireq` の `requests` 配列、op=2 の読み取り・op=3 の書き込み、
+fake は docs/dsiot.md「リクエストとレスポンス」の形 (`POST /dsiot/multireq` の `requests` 配列、op=2 の読み取り・op=3 の書き込み、
 `rsc` の結果コード) で応答し、書き込みを自分のプロパティツリーに反映する。実機と同じく `md.mx` の範囲外の値も
 拒否せずに保存する。
 """
@@ -36,7 +36,7 @@ _RSC_WRITE_OK = 2004
 _RSC_BAD_PARAMETER = 4000
 _RSC_NOT_FOUND = 4041
 _PT_CONTAINER = 1
-# 実機で受け付けを確かめた、書き込み本文のリーフの pt (README「仕組み」)。
+# 実機で受け付けを確かめた、書き込み本文のリーフの pt (docs/dsiot.md「リクエストとレスポンス」)。
 _PT_WRITE_LEAF = 3
 
 

@@ -1,7 +1,7 @@
 """
 MCK706A の dsiot の表現: アドレス・プロパティパス・wire 値の符号化と、プロパティツリーの組み立て。
 
-値は README の「仕組み」「プロパティ対応表」「値の一覧」に従う。
+値は docs/dsiot.md と README「指定できる値」に従う。
 """
 
 from collections.abc import Mapping
@@ -118,9 +118,9 @@ def tree(name: str, *, leaves: Mapping[str, dict[str, Any]]) -> dict[str, Any]:
 
 def mck706a_status() -> dict[str, dict[str, Any]]:
     """
-    MCK706A の dgc_status のリーフ。README の取得例の状態 (空気清浄のみ・smart・quiet) を表す。
+    MCK706A の dgc_status のリーフ。README「状態を読む」の例の状態 (空気清浄のみ・smart・quiet) を表す。
 
-    対応範囲 (md.mx) は README の「値の一覧」の MCK706A: 空気清浄側のコースは moist を除く smart〜circulator、
+    対応範囲 (md.mx) は MCK706A のもの (README「指定できる値」): 空気清浄側のコースは moist を除く smart〜circulator、
     加湿側は smart〜circulator、風量は high 以外、湿度設定は low / standard / high。
     """
     purify_courses = {COURSES.index(c) for c in COURSES[:7] if c != "moist"}

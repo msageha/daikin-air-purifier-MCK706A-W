@@ -2,7 +2,7 @@
 POST /api/power・/api/humidify・/api/course・/api/fan-speed・/api/humidity-setting: 本体の設定を書き換える。
 
 本体が対応しない値と、現在の運転状態では選べない値は、本体に送らずに 409 を返す。対応範囲は本体が
-`md.mx` (bit n = 値 n のビットマスク) で申告するものを使う (README「値の一覧」)。
+`md.mx` (bit n = 値 n のビットマスク) で申告するものを使う (README「指定できる値」)。
 """
 
 from typing import Any
@@ -224,7 +224,7 @@ _SETTER_IDS = ["humidify", "course", "fan-speed", "humidity-setting"]
 def test_setting_is_read_back_by_status(
     *, stack: Stack, path: str, body: dict[str, Any], status: dict[str, Any]
 ) -> None:
-    """書き込みの応答を受け取った後に読むと、書き込み後の状態が返る (README「値の一覧」の後の段落)。"""
+    """書き込みの応答を受け取った後に読むと、書き込み後の状態が返る。"""
     stack.unit.reset()
     # 湿度設定を書けるよう、加湿側のコースを manual にしておく。
     _set_status(stack, changes={dsiot.COURSE[True]: dsiot.hex_leaf("0100", mx="7F00")})

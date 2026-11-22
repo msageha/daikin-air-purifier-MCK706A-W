@@ -15,7 +15,6 @@ FROM python:${PYTHON_VERSION}-slim-bookworm AS runner
 LABEL org.opencontainers.image.source="https://github.com/msageha/daikin-air-purifier-MCK706A-W" \
       org.opencontainers.image.licenses="MIT"
 
-# Run as a non-root user.
 RUN useradd --create-home --uid 10001 appuser
 
 WORKDIR /app

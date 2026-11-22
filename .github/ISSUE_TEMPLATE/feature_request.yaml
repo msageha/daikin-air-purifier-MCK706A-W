@@ -23,4 +23,4 @@ body:
     id: notes
     attributes:
       label: 追加情報
-      description: その他の関連情報やスクリーンショットがあれば記載してください
+      description: その他の関連情報があれば記載してください

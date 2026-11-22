@@ -2,111 +2,58 @@
 
 [![CI](https://github.com/msageha/daikin-air-purifier-MCK706A-W/actions/workflows/ci.yaml/badge.svg?event=pull_request)](https://github.com/msageha/daikin-air-purifier-MCK706A-W/actions/workflows/ci.yaml)
 
-ダイキンの加湿空気清浄機 **MCK706A-W** のローカル `dsiot` API（「DAIKIN Smart
-APP」が内部で叩く API）を FastAPI + Pydantic でラップした REST サーバーです。
-クラウドを介さず、同一 LAN から空気の状態（温度・湿度・PM2.5 / ホコリ / ニオイの
-レベルなど）を取得し、電源・加湿・コース・風量・湿度設定を操作できます。
+ダイキンの加湿空気清浄機 **MCK706A-W** を、同じ LAN から HTTP で監視・操作する REST サーバーです。
+公式アプリが LAN 内で使う、仕様が公開されていない本体の API (`/dsiot/multireq`) を、扱いやすい JSON の API に変換します。クラウドは経由しません。
 
-## セットアップ
-
-このリポジトリは [mise](https://mise.jdx.dev/) の利用を前提としています。
-
-```sh
-mise trust    # 初回のみ: このディレクトリの mise.toml を信頼する
-mise install  # ツールをインストールし、uv sync と git hooks のセットアップを行う
+```mermaid
+flowchart LR
+    client["クライアント<br>(curl・Home Assistant など)"] -- "HTTP /api/*" --> server["このサーバー"]
+    server -- "POST /dsiot/multireq" --> unit["MCK706A 本体"]
 ```
 
-`mise install` を実行すると `[hooks] postinstall` により `uv sync --locked`（依存関係を `.venv` に入れる）と
-`prek install`（`.git/hooks/` の pre-commit・pre-push・commit-msg・pre-merge-commit の登録）が自動実行されます。
-`.pre-commit-config.yaml` の hook 構成が変わったあとの既存 clone では `mise exec -- prek install` を再実行してください。
+| できること | 対象                                                                  |
+| ---------- | --------------------------------------------------------------------- |
+| 読み取り   | 温度・湿度、PM2.5 / ホコリ / ニオイのレベル、運転状態、お手入れサイン |
+| 操作       | 電源、加湿の ON/OFF、コース、風量、湿度設定                           |
 
-以前 `make precommit-install`（pre-commit）で hook を登録していた clone では、`mise exec -- prek install --force` で
-旧 hook を置き換えてください。置き換えないと prek が旧 hook（`.git/hooks/pre-commit.legacy`）も実行し、
-`uv sync` で削除された pre-commit package を呼んで commit が失敗します。
+## 起動
 
-設定は環境変数で渡します（`.env` は読みません）。接続先の空気清浄機の URL（`DAIKIN_HOST`）は必須で、未設定や URL でない値では
-起動時に止まります。`TIMEOUT`（本体への HTTP タイムアウト、秒）は省略可で既定 10 秒です。
-git 管理外の `mise.local.toml` の `[env]` に書くと、`mise run` のタスクに渡ります。
+本体を Wi-Fi に接続し (公式アプリの初期設定で行う)、本体の IP アドレスをルーターの接続機器の一覧などで確かめておきます。
+このリポジトリを clone し、そのディレクトリで、本体の URL を環境変数 `DAIKIN_HOST` に設定して起動します。
+
+| 環境変数      | 必須 | 意味                                       |
+| ------------- | ---- | ------------------------------------------ |
+| `DAIKIN_HOST` | ○    | 本体の URL (例: `http://192.168.1.100`)    |
+| `TIMEOUT`     |      | 本体への通信のタイムアウト秒数 (既定 `10`) |
+
+[mise](https://mise.jdx.dev/) を使います。
+
+```sh
+mise trust     # 初回だけ。このディレクトリの mise.toml を信頼する
+mise install   # ツールと Python の依存を入れ、git hooks を登録する
+```
+
+`DAIKIN_HOST` は、git 管理外の `mise.local.toml` に書くと `mise run` のタスクに渡ります (アプリは `.env` を読みません)。
 
 ```toml
 [env]
 DAIKIN_HOST = "http://192.168.1.100"
 ```
 
-## 起動
+| 起動方法                          | コマンド                                           | アクセスできる範囲                            |
+| --------------------------------- | -------------------------------------------------- | --------------------------------------------- |
+| ソースから (ソースの変更で再起動) | `mise run dev`                                     | 起動したマシンだけ (`127.0.0.1`)              |
+| Docker (Docker が必要)            | `mise run build-image` の後に `mise run run-image` | LAN 内のほかの機器からも (ホストの port 8000) |
+
+起動したら http://127.0.0.1:8000/docs (Swagger UI) で全 endpoint を試せます。
+
+サーバーは本体への通信を 1 件ずつ順に送ります。この制御は 1 つのプロセスの中でしか効かないので、uvicorn の worker を増やしたり、1 台の本体に複数のサーバーをつないだりしないでください (上のどちらの起動方法も worker 1 つで動きます)。
+
+## 使い方
+
+### 状態を読む
 
 ```sh
-mise run dev   # = uv run uvicorn main:app --reload --app-dir src --host 127.0.0.1 --port 8000
-```
-
-- Swagger UI: http://127.0.0.1:8000/docs
-
-### Docker
-
-```sh
-mise run build-image   # docker build -t daikin-mck706a-api:latest .
-mise run run-image     # 設定されている環境変数を -e で渡して docker run する
-```
-
-mise を使わずに起動する場合（docker compose 等）は、`DAIKIN_HOST` を環境変数で渡してください。
-本体への通信を 1 件ずつ順に行う仕組みはプロセスの中でしか効かないので、uvicorn は 1 プロセス
-（`--workers 1`）で起動し、同じ本体に複数のサーバーをつながないでください。
-
-多段ビルド（`uv` ビルダ → `python:slim` ランナー、非 root 実行）。
-
-## エンドポイント
-
-| Method | Path                    | 説明                                                                                                |
-| ------ | ----------------------- | --------------------------------------------------------------------------------------------------- |
-| GET    | `/api/health`           | サーバー状態と接続先                                                                                |
-| GET    | `/api/info`             | 機器情報（name / device_type / mac / firmware / 接続中 Wi-Fi の SSID・RSSI / led 等）               |
-| GET    | `/api/status`           | 運転状態とセンサー値（電源 / 加湿 / コース / 風量 / 湿度設定 / 温湿度 / 空気質レベル / 各種サイン） |
-| GET    | `/api/tree`             | `adr_0100.dgc_status` 全リーフの復号済みツリー                                                      |
-| POST   | `/api/read`             | 任意の dsiot アドレスの生読み取り                                                                   |
-| POST   | `/api/write`            | 任意プロパティの書き込み（`confirm: true` 必須。JSON の true 以外は 422）                           |
-| POST   | `/api/power`            | 電源 ON/OFF（`{"on": true}`）                                                                       |
-| POST   | `/api/humidify`         | 運転切替。加湿 + 空気清浄 / 空気清浄のみ（`{"on": true}`）                                          |
-| POST   | `/api/course`           | コース変更（`{"course": "pollen"}`）                                                                |
-| POST   | `/api/fan-speed`        | 手動コースの風量（`{"fan_speed": "turbo"}`）                                                        |
-| POST   | `/api/humidity-setting` | 加湿側コースの湿度設定（`{"humidity_setting": "standard"}`）                                        |
-
-### 値の一覧
-
-| 項目               | 値                                                                                                                                   | 備考                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `course`           | `smart` `manual` `auto_fan` `econo` `pollen` `moist` `circulator` `laundry_dry` `night_laundry_dry` `water_deodorize` `internal_dry` | MCK706A が選べるのは `smart`〜`circulator`。`moist`（のど・はだ）は加湿運転時のみ              |
-| `fan_speed`        | `quiet` `low` `standard` `high` `turbo`                                                                                              | MCK706A は `high` 非対応。コースが `manual` のときだけ運転に反映される                         |
-| `humidity_setting` | `off` `low` `standard` `high` `continuous`                                                                                           | MCK706A は `low` / `standard` / `high` のみ。コースが `smart` / `moist` のときは自動で変更不可 |
-
-本体が対応しない値や、現在の運転状態では選べない値（空気清浄のみのときの `moist`、
-加湿側コースが `smart` のときの湿度設定）は本体に送らず 409 で返します。対応範囲は本体が
-`md.mx`（対応値のビットマスク）として申告するものを使います。
-
-本体への通信は 1 件ずつ順に行います。`GET /api/info` `/api/status` `/api/tree` は、
-同じ endpoint への読み取りが本体との通信待ちか通信中なら、それに相乗りして同じ結果を返します。
-このサーバーへの書き込みの応答を受け取ってから読めば、書き込み後の状態が返ります。本体のボタンや
-公式アプリでの変更は、相乗りした読み取りが始まった後のものだと、その結果には反映されません。
-
-### エラー
-
-| Status | 意味                                                                                                                                                                              |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 409    | 本体の対応範囲、または現在の運転状態では行えない操作                                                                                                                              |
-| 422    | リクエストの検証エラー（JSON の構文の誤り、JSON の値でない `NaN`・`Infinity` を含む本文、アドレス形式、`confirm` 欠落、未知の値など）                                             |
-| 502    | 本体がエラーを返した、または応答を解釈できない（`detail` と dsiot の `rsc`。整数の `200x` だけが成功で、`rsc` の無い応答も失敗。`/api/read` は `rsc` を見ずに応答をそのまま返す） |
-| 504    | 本体へ到達できない（タイムアウト・接続拒否）                                                                                                                                      |
-
-`/api/write` で対応範囲外の値（運転切替 `01`、コード 11 以上のコースなど）を書いて
-しまうと、以降 `/api/status` はその値を復号できず 502 になります。`GET /api/tree` で
-該当プロパティを見つけ、対応する setter（`/api/humidify` `/api/course` `/api/fan-speed`
-`/api/humidity-setting`）か `/api/write` で範囲内の値に戻してください。
-
-`/api/write` と各 setter が 502 を返したときも、書き込みが本体に届いて反映されている場合があります。
-反映されたかは `GET /api/status` か `GET /api/tree` で確かめてください。
-
-### 空気状態の取得例
-
-```bash
 curl http://127.0.0.1:8000/api/status
 ```
 
@@ -133,451 +80,132 @@ curl http://127.0.0.1:8000/api/status
 }
 ```
 
-`course` と `fan_speed` は現在の運転切替（`humidify`）側の設定です。本体は空気清浄側と
-加湿側の設定を別々に保持していて、MCK706A では片方を変えると数秒遅れでもう片方にも
-同じ値が同期されます（実機で観測）。`humidity_setting` は加湿側コースに対する設定で、
-`humidify` が false のときも値を返します。同期が終わるまでの数秒は `course` と
-加湿側コースが食い違うので、`/api/course` の直後に `/api/humidity-setting` を叩くときは
-`/api/status` で `humidity_setting` が期待どおりか確認してください。
+| フィールド                             | 意味                                                                                               |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `power` / `humidify`                   | 運転中か / 加湿 + 空気清浄の運転か (`false` は空気清浄のみ)                                        |
+| `course`                               | 今の運転のコース                                                                                   |
+| `fan_speed`                            | 手動コース (`manual`) で使う風量の設定値。ほかのコースでは運転に効かない                           |
+| `humidity_setting`                     | 加湿運転のコースに対する湿度設定 (空気清浄のみの運転中も返す)。本体が自動で決めるコースでは `null` |
+| `temperature_c` / `humidity_pct`       | 室温 (℃) / 湿度 (%)                                                                                |
+| `pm25_level` `dust_level` `odor_level` | 空気の汚れ。0〜5 の段階                                                                            |
+| `pm25_raw` `dust_raw` `odor_raw`       | センサーの生の値 (単位は不明)                                                                      |
+| `*_sign`                               | お手入れのサイン (タンクが空・脱臭フィルター外れ・ストリーマのお手入れ)                            |
+| `filter_drying`                        | 加湿フィルターの乾燥運転中か                                                                       |
+| `error_code`                           | エラーコード。`00-00` が正常                                                                       |
 
-### 操作例
+本体が値を返さなかったフィールドは `null` になります。
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/power \
-  -H 'Content-Type: application/json' -d '{"on": false}'
-
-curl -X POST http://127.0.0.1:8000/api/humidify \
-  -H 'Content-Type: application/json' -d '{"on": true}'
-
-curl -X POST http://127.0.0.1:8000/api/course \
-  -H 'Content-Type: application/json' -d '{"course": "manual"}'
-
-curl -X POST http://127.0.0.1:8000/api/fan-speed \
-  -H 'Content-Type: application/json' -d '{"fan_speed": "turbo"}'
-
-curl -X POST http://127.0.0.1:8000/api/humidity-setting \
-  -H 'Content-Type: application/json' -d '{"humidity_setting": "standard"}'
-```
-
-### 汎用パススルー
-
-読み取り（`/dsiot/edge` を指定すると本体が持つ全アドレスを一括で列挙できます）:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/read \
-  -H 'Content-Type: application/json' \
-  -d '{"targets":["/dsiot/edge/adr_0100.dgc_status","/dsiot/edge.adp_i"]}'
-```
-
-書き込み（破壊的・`confirm` 必須）:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/write \
-  -H 'Content-Type: application/json' \
-  -d '{"to":"/dsiot/edge/adr_0100.dgc_status","entity_path":["e_1002","e_A002","p_01"],"pv":"00","confirm":true}'
-```
-
-- `pv` はリトルエンディアンの16進文字列（偶数長）。
-- `entity_path` はレスポンスのルート（`dgc_status`）配下のプロパティ名の連なり。
-- 本体は `md.mx` の範囲外の値も拒否せず保存するので、生書き込みでは範囲を自分で守ってください。
-
-## 開発
-
-Python は 3.14 以上です。Python のツールチェーンは uv（依存関係と Python 本体）、ruff（lint + formatter）、
-ty と pyright（型チェック）、import-linter（層の依存の検査）、pytest（pytest-xdist で並列実行し、Hypothesis で property-based test を書く）で、ruff・ty・pyright は strict に設定しています。
-Python の依存は、`pyproject.toml` の `[[tool.uv.index]]` で宣言した `https://pypi.flatt.tech/simple/` から取得します。
-既定の index として宣言しているので、`UV_INDEX_URL` やユーザー設定の既定の index を設定した環境でも、この宣言が使われます。
-ただし、既定の index を差し替える `UV_DEFAULT_INDEX` と、追加の index（`UV_INDEX`・`UV_EXTRA_INDEX_URL`・`--index`・ユーザー設定の
-`[[index]]`）はこの宣言より先に使われるので、設定すると `uv.lock` の取得元と食い違います。
-それ以外のツールは `mise.toml` の `[tools]` で exact version に pin し、`mise.lock` でプラットフォームごとの
-URL / checksum を固定しています。CI（`ci.yaml`）もローカルも同じ `mise.lock` からツールを解決するため、
-同じ検証をローカルで再現できます。タスクの一覧は末尾の「[タスク](#タスク)」を参照してください。
+### 操作する
 
 ```sh
-mise run format                          # import の並べ替え + ruff format
-mise run lint                            # ruff check + ruff format --check + lint-imports + ty check + pyright
-mise run test                            # coverage run -m pytest + report（並列実行。オフラインで、実機には触れません）
-mise run pre-commit                      # pre-commit stage の hook を全追跡ファイルに対して実行する（CI の Run prek step と同じ）
-mise exec -- gitleaks git --redact -v .  # コミット履歴全体のシークレットスキャン（CI の gitleaks job と同じ）
+curl -X POST http://127.0.0.1:8000/api/power -H 'Content-Type: application/json' -d '{"on": true}'
+curl -X POST http://127.0.0.1:8000/api/course -H 'Content-Type: application/json' -d '{"course": "pollen"}'
 ```
 
-- [prek](https://github.com/j178/prek): pre-commit hook の実行基盤。hooks は `.pre-commit-config.yaml` で定義します。
-  Python のファイルや設定が変わったとき、commit 時に `ruff-isort` / `ruff-format` hook が commit するファイルの
-  import を並べ替えて整形し（未追跡のファイルは書き換えません）、`lint` hook が `mise run lint` を、push 時に `lint` hook と
-  `test` hook が `mise run lint` / `mise run test` を実行するので、手元の `mise run` と同じ検査になります。hook は
-  push する commit ではなく作業ツリーを検査する手元の事前検査で、push した変更の最終的な判定は PR の CI が行います。
-  ファイルを書き換える hook（整形・README のタスク一覧の同期等）は commit 時だけに実行し、push 時は検査だけを行います
-  （作業ツリーの次の作業のファイルを書き換えないため）。
-  ruff / ty / import-linter は `uv run --locked` で動かし、バージョンは `uv.lock` に一元化しています。
-  pyright は npm で配布されるので、`mise.toml` に node と合わせて pin しています。
-  main への commit と merge commit は `no-commit-to-branch` hook が止めます（main は PR 必須）。この hook は実際の commit と merge の時だけに効かせ、
-  検証用の `mise run pre-commit` では実行しません（main を checkout したままでも検証できるようにするため）。
-- [import-linter](https://import-linter.readthedocs.io/): `pyproject.toml` の `[tool.importlinter]` の契約で、
-  `daikin` が `api`・`main`・`settings` に依存しないこと、各パッケージ内の層の向き、`api` と `daikin` の中で外部ライブラリ
-  （fastapi・requests）を直接 import できるモジュールを検査します（`mise run lint` の中で実行）。
-  `src` 直下の `main.py` と `settings.py` は package ではないので、自身の import は検査の対象外です。
-- [dprint](https://dprint.dev/): json / markdown / toml / yaml / Dockerfile のフォーマッタ（`dprint-fmt` hook）。
-  plugin の WASM URL は `dprint.json` に `url@sha256` の checksum 付きで pin します。`uv.lock` / `mise.lock` / `.mise/locks/` は対象外。
-- [actionlint](https://github.com/rhysd/actionlint): workflow の静的検査（`actionlint` hook）。
-  `run:` スクリプトの検査に [shellcheck](https://github.com/koalaman/shellcheck) を使います。actionlint は PATH に
-  shellcheck が無いとその検査を黙って省くため、ローカルと CI で結果が変わらないように mise で pin しています。
-- [hadolint](https://github.com/hadolint/hadolint): `Dockerfile` の静的検査（`hadolint` hook）。`.hadolint.yaml` で
-  style 以上の全 severity を失敗にし、ベースイメージの registry を docker.io / ghcr.io に限り、OCI label
-  （`org.opencontainers.image.source` / `licenses`）を必須にしています。`label-schema` に無い label は拒否するので、
-  label を足すときはそこにも足します。Dockerfile 内の `# hadolint ignore=` は無効にし、書くこと自体も拒否する
-  （DL1001）ので、除外が要るときは `.hadolint.yaml` の `ignored` に書きます。
-- [typos](https://github.com/crate-ci/typos): 英単語の typo 検査（`typos` hook）。`typos.toml` で綴りを米国英語に
-  統一しています。誤検知は `typos.toml` の `extend-identifiers`（識別子）・`extend-words`（単語）・
-  `extend-ignore-re`（パターン）で除外します。
-- [zizmor](https://docs.zizmor.sh/): workflow と `.pre-commit-config.yaml` のセキュリティ監査（`zizmor` hook）。
-  `--persona auditor` で false positive を含む全 finding を、`--strict-collection` で解析できない入力を失敗にし、
-  `--no-ignores` / `--no-config` で inline の ignore コメントと設定ファイルによる除外を無効にしています。finding は
-  除外せず、指摘されたファイル（workflow か `.pre-commit-config.yaml`）を直して解消します。
-  GitHub API を使う online audit（impostor-commit 等）は token があるときだけ走るため、CI の `prek` job は
-  `ZIZMOR_GITHUB_TOKEN` を渡した専用 step でも実行します。ローカルで同じ範囲を監査するには
-  `ZIZMOR_GITHUB_TOKEN=$(gh auth token) mise exec -- zizmor --persona auditor --strict-collection --no-ignores --no-config .` を実行します。
-- [gitleaks](https://github.com/gitleaks/gitleaks): シークレットスキャン。pre-commit hook（`gitleaks` hook）が
-  staged 差分を、CI の `gitleaks` job がコミット履歴全体を対象にします。
-- [commitlint](https://commitlint.js.org/): commit message を
-  [Conventional Commits](https://www.conventionalcommits.org/) で検査する commit-msg hook（`commitlint` hook）。
-  ルールは `commitlint.config.mjs`。prek が node と依存を隔離環境へ自前で用意します。
-- [fnox](https://fnox.jdx.dev/): secret manager。`fnox.toml` の `[daemon]` は解決済みの secret をメモリに
-  キャッシュする daemon を有効化し、`idle_timeout`（12h）無操作で終了させる設定です。
+操作が成功した (200 が返った) 後に `/api/status` を読むと、操作後の状態が返ります。
 
-`.gitignore` はホワイトリスト方式（`*` で全て無視し、`!` で許可したものだけを追跡する）です。
-新しく追跡したいファイルを追加する場合は、対応する `!` の行を追記してください。
+### Endpoint
 
-### mise.toml / mise.lock を手で変更するとき
+| Method | Path                    | 内容                                                                 |
+| ------ | ----------------------- | -------------------------------------------------------------------- |
+| GET    | `/api/health`           | サーバーの状態と接続先 (本体には通信しない)                          |
+| GET    | `/api/info`             | 機器情報 (名前・MAC アドレス・ファームウェア・接続中の Wi-Fi 等)     |
+| GET    | `/api/status`           | 運転状態とセンサー値                                                 |
+| POST   | `/api/power`            | 電源 (`{"on": true}`)                                                |
+| POST   | `/api/humidify`         | 加湿 + 空気清浄 / 空気清浄のみの切り替え (`{"on": true}` で加湿あり) |
+| POST   | `/api/course`           | コース (`{"course": "smart"}`)                                       |
+| POST   | `/api/fan-speed`        | 風量 (`{"fan_speed": "turbo"}`)                                      |
+| POST   | `/api/humidity-setting` | 湿度設定 (`{"humidity_setting": "standard"}`)                        |
+| GET    | `/api/tree`             | 運転とセンサーの全プロパティを復号した値 (調査用)                    |
+| POST   | `/api/read`             | 指定したアドレスの本体の応答を返す (調査用。結果コードは判定しない)  |
+| POST   | `/api/write`            | 任意のプロパティを書き込む (調査用。`"confirm": true` が必須)        |
 
-`mise.toml` の `[tools]` を手で変更したら `mise lock` を実行して `mise.lock` を追従させ、両方を同じ commit に
-含めます。CI の mise-action は `mise.lock` があると `mise install --locked` でインストールするため、`mise.lock` が
-古いままだと CI の各 job で失敗します。npm: backend のツール（pyright）は、`mise.lock` が `.mise/locks/` の下の
-依存の lock を digest で参照するので、その差分も同じ commit に含め、手で編集しません。
+### 指定できる値
 
-### 依存関係の更新（Renovate）
+MCK706A で使える値です。
 
-`renovate.json` で以下を Renovate に任せています。
+| 項目               | 値                                                                | 条件                                                                    |
+| ------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `course`           | `smart` `manual` `auto_fan` `econo` `pollen` `moist` `circulator` | `moist` (のど・はだ) は加湿運転中だけ                                   |
+| `fan_speed`        | `quiet` `low` `standard` `turbo`                                  | 運転に効くのはコースが `manual` のときだけ                              |
+| `humidity_setting` | `low` `standard` `high`                                           | 加湿運転のコースが `smart` / `moist` のときは本体が自動で決め、変更不可 |
 
-- `pyproject.toml` の依存バージョンと `uv.lock` の更新、`uv.lock` の週次再解決（`lockFileMaintenance`）。
-- `mise.toml` のバージョン bump と、それに伴う `mise.lock` と `.mise/locks/` の更新（同じ PR で行われる）。
-- `.pre-commit-config.yaml` の hook `rev` と、`language: node` の hook の `additional_dependencies`。
-- workflow の `uses:` の commit SHA（バージョンはコメントで併記し、Renovate が両方を更新する）。
-- `dprint.json` の plugin URL と checksum（`customManagers`）。
+ほかの機種向けの値や、今の運転状態では選べない値を指定すると、本体に書き込まずに 409 を返します。
 
-実行する Python の版は、`.python-version` と `Dockerfile` の `ARG PYTHON_VERSION`（両 stage のベースイメージの版）を同じ値にして
-手で上げます。片方だけを上げる PR が作られないよう、`renovate.json` で `.python-version` と `Dockerfile` の python・uv のイメージを
-Renovate の対象外にしています。
-対応する Python の下限を上げるときは、`pyproject.toml` の `requires-python` と `[tool.pyright]` の `pythonVersion` も合わせます。
-
-更新 PR は毎週月曜 9 時前 (Asia/Tokyo) にまとめて作られます。major 以外の更新は 1 つの PR に集約します。このうち minor / patch は `minimumReleaseAge`（7 日）経過後、
-CI green を条件に Renovate 自身が自動マージします（`platformAutomerge: false`）。major は個別 PR で人手レビューします。
-
-### CI
-
-`.github/workflows/ci.yaml` は pull request 時に以下の job を並列実行します。job の `name` がそのまま
-required status check の名前になります。
-
-- `prek`: `mise.lock` 通りのツールで `.pre-commit-config.yaml` の pre-commit stage の hook を `mise run pre-commit` で実行します。
-  `lint` hook（`mise run lint`）は `uv run --locked` で動くため、`uv.lock` と `pyproject.toml` の不整合もここで失敗します。
-  続けて、online audit を含めた zizmor を token 付きで実行します。
-- `gitleaks`: コミット履歴全体を対象にシークレットスキャンを行います。
-- `verify`: `mise run test` でテストを実行します。
-
-main への push では実行しません（main は PR 必須で、変更は PR の CI で検証してから merge されます）。
-workflow の外部依存（`uses:`）は commit SHA で固定し、バージョンをコメントで併記します。
-
-### GitHub リポジトリ設定
-
-ファイルとして管理できないリポジトリ設定です。public リポジトリなので ruleset と secret scanning が使えます。
-required checks は `ci.yaml` の job の `name`（`prek` / `gitleaks` / `verify`）に合わせます。
-
-```sh
-REPO=msageha/daikin-air-purifier-MCK706A-W
-
-# merge 方式: squash のみ / squash タイトルは COMMIT_OR_PR_TITLE /
-# merge 後にブランチ自動削除 / wiki off
-gh api -X PATCH "repos/$REPO" --input - <<'JSON'
-{
-  "allow_merge_commit": false,
-  "allow_rebase_merge": false,
-  "allow_squash_merge": true,
-  "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
-  "squash_merge_commit_message": "COMMIT_MESSAGES",
-  "delete_branch_on_merge": true,
-  "has_wiki": false
-}
-JSON
-
-# main を PR 必須・CI green 必須・squash merge 限定・force push / 削除禁止・linear history にする
-gh api -X POST "repos/$REPO/rulesets" --input - <<'JSON'
-{
-  "name": "Protect main",
-  "target": "branch",
-  "enforcement": "active",
-  "bypass_actors": [],
-  "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
-  "rules": [
-    {"type": "deletion"},
-    {"type": "non_fast_forward"},
-    {"type": "required_linear_history"},
-    {"type": "pull_request", "parameters": {
-      "required_approving_review_count": 0,
-      "dismiss_stale_reviews_on_push": false,
-      "require_code_owner_review": false,
-      "require_last_push_approval": false,
-      "required_review_thread_resolution": false,
-      "allowed_merge_methods": ["squash"]
-    }},
-    {"type": "required_status_checks", "parameters": {
-      "do_not_enforce_on_create": false,
-      "strict_required_status_checks_policy": false,
-      "required_status_checks": [
-        {"context": "prek", "integration_id": 15368},
-        {"context": "gitleaks", "integration_id": 15368},
-        {"context": "verify", "integration_id": 15368}
-      ]
-    }}
-  ]
-}
-JSON
-
-# secret scanning: push protection に加え、non-provider patterns も有効化する
-gh api -X PATCH "repos/$REPO" --input - <<'JSON'
-{
-  "security_and_analysis": {
-    "secret_scanning": {"status": "enabled"},
-    "secret_scanning_push_protection": {"status": "enabled"},
-    "secret_scanning_non_provider_patterns": {"status": "enabled"}
-  }
-}
-JSON
-```
-
-### template との同期
-
-共通ファイル（workflow・hook 設定・Renovate 設定・dprint 設定等）は
-[dope-corp/template](https://github.com/dope-corp/template) から取り込んでいます。`mise run template-diff` で
-template の main と比較して unified diff を表示します。差分にはこのリポジトリ固有の変更（Python 向け hook・
-`verify` job・issue form の `labels:` 等）も混ざるので、取り込むものは手で選んでください。
-template の `claude.yaml` / `claude-sweep.yaml`（GitHub 上で Claude Code を動かす workflow）は、
-このリポジトリでは使わないため取り込んでいません。
-
-## 仕組み
-
-新しめのダイキン機（ファームウェア `3_15_0` / `api_ver 2_2` の MCK706A）は、
-旧来の `/cleaner/*`・`/common/*` といった REST エンドポイントを持たず、単一の
-JSON エンドポイントだけを公開しています。
-
-```
-POST http://<host>/dsiot/multireq
-```
-
-ボディは `requests` 配列で、各要素が操作コード `op` と対象パス `to` を持ちます。
-
-- `op=2` … プロパティツリーの**読み取り**
-- `op=3` … プロパティツリーの**書き込み**（`pc`）
-
-レスポンスは*プロパティノード*のツリーです。各ノードは以下を持ちます。
-
-- `pn` … プロパティ名（`e_1002`, `p_01` など）
-- `pt` … 型（`1`=子 `pch` を持つコンテナ、`2` / `3`=リーフ。実機では概ね設定値が `2`、
-  センサー・固定情報が `3`。書き込み本文のリーフは `pt: 3` で送っても受け付けられる。実機で確認）
-- `pv` … 値（リーフのみ）
-- `md` … メタ情報。`md.pt` が値の符号化方式（`"b"`=リトルエンディアン16進バイト列、
-  `"i"`=整数、`"s"`=文字列）、`md.mi`/`md.mx` が最小/最大値（16進）。列挙型の
-  プロパティでは `md.mx` が対応値のビットマスク（bit n = 値 n）
-- `rsc` … 結果コード。`200x` が成功（公式アプリの扱い。MCK706A は書き込み成功時に `2004` を返す）、
-  `4000` パラメータ不正（公式アプリの定義）、`4041` 存在しないアドレス（実機で観測）
-
-> 認証はありません。LAN 内の誰でも読み書きできます。
-
-### アドレス
-
-`/dsiot/edge` を読むと配下の全アドレスがまとめて返ります。MCK706A で読めるもの:
-
-| アドレス                                            | 内容                                                                | 使う endpoint                       |
-| --------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------- |
-| `/dsiot/edge/adr_0100.dgc_status`                   | 制御とセンサー                                                      | `/api/status` `/api/tree` 各 setter |
-| `/dsiot/edge.adp_i`                                 | アダプタ情報（FW / MAC / 自身の AP の SSID / api_ver / 機能フラグ） | `/api/info`                         |
-| `/dsiot/edge.adp_d`                                 | ユーザー設定（名前 / LED / タイムゾーン / 自動 OFF 通知）           | `/api/info`                         |
-| `/dsiot/edge.adp_r`                                 | 無線の接続状態（接続中 SSID / RSSI）と再起動・FW 更新の履歴         | `/api/info`                         |
-| `/dsiot/edge.dev_i`                                 | 機器種別（`type` = `1D` が空気清浄機）と接続台数                    | `/api/info`                         |
-| `/dsiot/edge.adp_f`                                 | FW 種別と自動更新の有効/無効                                        | `/api/read` のみ                    |
-| `/dsiot/edge/adr_0100.scdl_t.info` / `.scdl_t.body` | 週間スケジュールタイマー（JSON 値）                                 | `/api/read` のみ                    |
-| `/dsiot/edge/adr_0200.dgc_status`                   | 空（室外機側。空気清浄機には無い）                                  | —                                   |
-
-`adr_0100.history`（アプリの空気質履歴）と `adr_0100.i_power.*`（消費電力）は
-この機体では `4041` で読めません。
-
-### プロパティ対応表
-
-`dgc_status` 配下のプロパティの意味は、公式 DAIKIN Smart App の空気清浄機向け定義
-（`GPFCjConvertValue` の enum 表と `strings.xml` のラベル）を一次情報とし、実機
-（MCK706A / FW 3_15_0）で読み書きして確認しています。
-
-| フィールド                                 | プロパティ                                           | 値                                                                                                     | 確認                                       |
-| ------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `power`                                    | `e_1002/e_A002/p_01`                                 | `00` / `01`                                                                                            | 実機で書き込み確認                         |
-| `humidify`                                 | `e_1002/e_3001/p_3F`                                 | `00` 空気清浄、`01` 除湿+空気清浄（MCK706A 非対応）、`02` 加湿+空気清浄                                | 実機で書き込み確認                         |
-| `course`                                   | `e_1002/e_3007/p_01`（空気清浄側）/ `p_03`（加湿側） | 2 バイト LE。下位バイトがコード（`00` smart … `06` circulator … `0A` internal_dry）、上位バイトは `00` | 実機で書き込み確認                         |
-| `fan_speed`                                | `e_1002/e_3007/p_04`（空気清浄側）/ `p_06`（加湿側） | `00` quiet … `04` turbo                                                                                | 実機で書き込み確認                         |
-| `humidity_setting`                         | `e_1002/e_3007/p_12`〜`p_1C`（加湿側、コース順）     | `00` off、`01` low、`02` standard、`03` high、`04` continuous                                          | 実機で書き込み確認（`p_13`）               |
-| `temperature_c`                            | `e_1002/e_A00B/p_01`                                 | int16 LE、0.5 ℃ 単位（`md.st`=0xF5）                                                                   | 実機で確認                                 |
-| `humidity_pct`                             | `e_1002/e_A00B/p_02`                                 | %                                                                                                      | 実機で確認                                 |
-| `pm25_level` / `dust_level` / `odor_level` | `e_1002/e_3007/p_1D` / `p_1E` / `p_1F`               | 0〜5                                                                                                   | 公式アプリ定義（読み取りのみ）             |
-| `pm25_raw` / `dust_raw` / `odor_raw`       | `e_1002/e_3007/p_26` / `p_27` / `p_28`               | 24 bit                                                                                                 | アプリの履歴グラフの元値と推定。単位未特定 |
-| `water_supply_sign`                        | `e_1002/e_3007/p_20`                                 | flag                                                                                                   | 公式アプリ定義                             |
-| `filter_drying`                            | `e_1002/e_3007/p_29`                                 | flag                                                                                                   | 公式アプリ定義                             |
-| `deodorizing_filter_off_sign`              | `e_1002/e_3007/p_3E`                                 | flag                                                                                                   | 公式アプリ定義                             |
-| `streamer_maintenance_sign`                | `e_1002/e_3001/p_40`                                 | flag                                                                                                   | 公式アプリ定義                             |
-| `error_code`                               | `e_1002/e_A004/p_09`                                 | ASCII（`00-00` = 正常）                                                                                | 公式アプリ定義                             |
-
-公式アプリの定義に無く意味が未特定のプロパティ（`e_3007/p_2B`〜`p_3D` の一部、
-`e_205E`、`e_205F_*` など）は `/api/status` には含めず、`GET /api/tree` で生の値を
-確認できます。一定間隔でポーリングして「変動するフィールド」を炙り出すのが手です。
-
-## 構成
-
-`src/` 直下をトップレベルパッケージとして解決する virtual プロジェクト（ビルドなし）。
-実行・テストは `--app-dir src` / `pythonpath = ["src"]` / `PYTHONPATH=src` で解決します。
-
-```
-src/
-  daikin/          dsiot ローカル API クライアント（FastAPI 非依存・単体利用可）
-    protocol.py      multireq 本文の組み立て、16 進デコーダ、PropertyTree
-    models.py        Course / FanSpeed / HumiditySetting、DeviceInfo / AirStatus / DecodedLeaf、MultireqResponse
-    client.py        DaikinClient（通信、MCK706A のアドレス・プロパティパス・wire 値、高レベル API）
-    exceptions.py    DaikinError / DaikinConnectionError / DaikinUnsupportedError
-  api/             FastAPI 層
-    routes.py        エンドポイント定義
-    schemas.py       request モデル
-    service.py       DaikinClient を lock + worker thread で直列実行し、同時に来た同じ読み取りをまとめる DaikinService
-  settings.py      環境変数（pydantic-settings）
-  main.py          FastAPI アプリと、例外 → HTTP status の対応
-tests/             機能ごとの e2e テスト（API サーバーを起動し、fake の空気清浄機につなぐ）
-```
+本体は「空気清浄のみ」と「加湿」の運転ごとにコースと風量を持ち、片方を変えると数秒後にもう片方へ同じ値が入ります。湿度設定は加湿運転のコースに対して書き込むので、空気清浄のみの運転中にコースを変えた直後は、変更前のコースに書き込まれるか 409 になります。
 
 ```mermaid
-flowchart LR
-    main[main.py] --> settings[settings.py]
-    main --> routes[api/routes.py]
-    routes --> schemas[api/schemas.py]
-    routes --> service[api/service.py]
-    service --> client[daikin/client.py]
-    client --> models[daikin/models.py]
-    client --> protocol[daikin/protocol.py]
-    client --> exceptions[daikin/exceptions.py]
-    main --> exceptions
+sequenceDiagram
+    participant C as クライアント
+    participant U as 本体 (このサーバー経由)
+    C->>U: /api/course (空気清浄のみの運転のコースを変える)
+    Note over U: 加湿運転のコースは数秒間、変更前のまま
+    C->>U: /api/humidity-setting
+    Note over U: 変更前のコースに書き込まれるか、409 になる
+    Note over U: 数秒後、加湿運転のコースにも同じ値が入る
 ```
 
-新しいプロパティを公開するときは、`client.py` にプロパティパスの定数と
-`tree.decode(パス, decoder=デコーダ)` の 1 行、`models.py` に対応するフィールドを足します。
-デコーダ（`hex_to_int` / `hex_to_bool` / `hex_to_temp` / `int_to_bool` など）は
-`protocol.py` にあります。
+コースを変えてから湿度設定を変えるときは、数秒待ってから呼んでください。
+
+### エラー
+
+| Status | 原因                                                                                         | 対処                                                                              |
+| ------ | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 409    | 本体が対応していない値か、今の運転状態では選べない値                                         | 「指定できる値」の条件を確かめる                                                  |
+| 422    | リクエストの形式の誤り (未知の値、`/api/write` の `confirm` の欠落など)                      | `detail` の内容に従ってリクエストを直す                                           |
+| 502    | 本体がエラーを返したか、応答を解釈できない (`detail` と、本体が返していれば結果コード `rsc`) | 操作は本体に反映されている場合があるので、`/api/status` か `/api/tree` で確かめる |
+| 504    | 本体に接続できない (タイムアウト・接続拒否)                                                  | `DAIKIN_HOST` と、本体の電源・Wi-Fi を確かめる                                    |
+
+`/api/write` は値の範囲を検査しません。本体は範囲外の値もそのまま保存し、このサーバーが解釈できない値が入ると以降の `/api/status` が 502 になります。その場合は `/api/tree` で該当するプロパティを探し、対応する操作の endpoint か `/api/write` で正しい値に戻してください。本体の API とプロパティの対応は [docs/dsiot.md](docs/dsiot.md) にあります。
 
 ## 注意
 
-- ローカルネットワーク内（同一サブネット）からの利用を想定しています。認証は
-  ありません。
-- ファームウェアによってフィールドが異なる場合があります。`/api/info`・`/api/status`
-  は既知のフィールドだけを返すので、生の値は `/api/tree`（復号済み）や `/api/read`
-  （dsiot 応答そのまま）で確認してください。
+- 認証はありません。本体と、Docker で起動したこのサーバーは、LAN 内の誰でも読み書きできます。LAN の外に公開するときは、認証を持つ reverse proxy を手前に置き、このサーバーの port には proxy からしか届かないようにしてください。
+- 動作を確かめたのは MCK706A (ファームウェア `3_15_0`) だけです。ファームウェアの更新で本体の API が変わる可能性があります。
+
+## 開発
+
+作業は main から切ったブランチで行い、PR で merge します。commit message は [Conventional Commits](https://www.conventionalcommits.org/) で書きます。ツール構成・CI・依存の更新・GitHub の設定は [docs/development.md](docs/development.md) にあります。
+
+検査やテストは `mise run <task>` で実行します。
+
+<!-- 次の表は mise.toml のタスクの description から mise run docs が生成する (commit 時の hook も実行する)。手で編集しない -->
+<!-- dprint-ignore-start -->
+<!-- mise-tasks -->
+| Task | 内容 |
+| --- | --- |
+| `build-image` | Docker イメージ daikin-mck706a-api:latest を build する |
+| `clean` | キャッシュと coverage の生成物を削除する |
+| `dev` | 開発サーバーを http://127.0.0.1:8000 で起動する。ソースを変えると自動で再起動する |
+| `docs` | README.md のタスク一覧を、mise.toml のタスクの説明から作り直す |
+| `format` | Python のファイルを整形し、import を並べ替える |
+| `lint` | Python の lint と整形 (ruff)、モジュール間の依存の向き (import-linter)、型 (ty) を検査する |
+| `pre-commit` | commit 時の hook を、no-commit-to-branch を除いて git が追跡する全ファイルに実行する (CI の prek job の Run prek step と同じ検査)。整形する hook はファイルを書き換える |
+| `run-image` | Docker イメージを port 8000 で起動する。環境変数 DAIKIN_HOST・TIMEOUT をそのまま渡す |
+| `template-diff` | dope-corp/template から取り込んだ共通ファイルと、template の main との差分を表示する |
+| `test` | テストを並列に実行し、coverage を表示する。実機には接続しない |
+<!-- /mise-tasks -->
+<!-- dprint-ignore-end -->
 
 ## 免責 / Disclaimer
 
-本プロジェクトは **ダイキン非公式**であり、ダイキン工業株式会社とは一切関係あり
-ません。公開されていないローカル API をリバースエンジニアリングして利用しています。
+本プロジェクトは**ダイキン非公式**で、ダイキン工業株式会社とは関係ありません。公開されていないローカル API をリバースエンジニアリングして利用しています。
 
-- **自分が管理権限を持つ機器に対してのみ**使用してください。
-- ファームウェア更新で API が予告なく変わる可能性があります。
-- 本ソフトウェアは現状有姿（AS IS）で提供され、いかなる保証もありません。
+- 自分が管理する機器にだけ使ってください。
+- 本ソフトウェアは現状有姿 (AS IS) で提供し、いかなる保証もありません。
 
 ## 謝辞 / Acknowledgements
 
-`dsiot`（`/dsiot/multireq`）プロトコルの構造と温度/湿度のデコード方式は、ダイキンの
-新ファームウェア（BRP084 系）を対象とした以下の公開リバースエンジニアリング成果を
-参考にしています。
+本体の API (`/dsiot/multireq`) の構造と温度・湿度の復号方法は、次の公開されたリバースエンジニアリングの成果を参考にしました。
 
 - [Apoc182/local_daikin](https://github.com/Apoc182/local_daikin)
 - [Chris971991/homeassistant-daikin-optimized](https://github.com/Chris971991/homeassistant-daikin-optimized)
 
-空気清浄機（Cj）向けのプロパティ対応表・`rsc` コード・`md.mx` のビットマスク解釈は、
-公式アプリの decompile を整理した以下を参照しました。
+空気清浄機のプロパティの意味と結果コードは、公式アプリを解析した次の資料を参照しました。
 
-- [gpdl49/ha-daikin-india](https://github.com/gpdl49/ha-daikin-india)（`docs/api-spec.md`）
-- [tthophan/daikin-smart-app](https://github.com/tthophan/daikin-smart-app)（`GPFCjConvertValue.smali`、`res/values/strings.xml`）
+- [gpdl49/ha-daikin-india](https://github.com/gpdl49/ha-daikin-india) (`docs/api-spec.md`)
+- [tthophan/daikin-smart-app](https://github.com/tthophan/daikin-smart-app) (`GPFCjConvertValue.smali`、`res/values/strings.xml`)
 
-MCK706A 固有の対応範囲（`md.mx`）と書き込み時の挙動は実機（FW 3_15_0）で確認しました。
-
-## ライセンス / License
+## License
 
 [MIT](LICENSE)
-
-## タスク
-
-タスクは `mise run <task>` で実行します。`mise.toml` の `[tasks]` を変更した場合は
-`mise run docs` を実行し、以下の一覧を更新してください（pre-commit hook からも自動実行されます）。
-
-<!-- dprint-ignore-start -->
-<!-- mise-tasks -->
-## `build-image`
-
-- **Usage:** `build-image`
-
-Build the Docker image daikin-mck706a-api:latest
-
-## `clean`
-
-- **Usage:** `clean`
-
-Remove caches and coverage artifacts
-
-## `dev`
-
-- **Usage:** `dev`
-
-Run the API server with auto-reload on http://127.0.0.1:8000
-
-## `docs`
-
-- **Usage:** `docs`
-
-Sync the task list embedded in README.md with mise.toml
-
-## `format`
-
-- **Usage:** `format`
-
-Format python sources with ruff and sort imports
-
-## `lint`
-
-- **Usage:** `lint`
-
-Check lint and formatting (ruff), layer dependencies (import-linter) and types (ty / pyright)
-
-## `pre-commit`
-
-- **Usage:** `pre-commit`
-
-Run the pre-commit stage hooks on all tracked files with prek (same as the CI prek job)
-
-## `run-image`
-
-- **Usage:** `run-image`
-
-Run the Docker image on port 8000 with the settings from the environment
-
-## `template-diff`
-
-- **Usage:** `template-diff`
-
-Diff shared files against dope-corp/template main
-
-## `test`
-
-- **Usage:** `test`
-
-Run pytest under coverage and print the report
-<!-- /mise-tasks -->
-<!-- dprint-ignore-end -->
