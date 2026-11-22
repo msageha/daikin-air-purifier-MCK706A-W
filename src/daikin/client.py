@@ -6,6 +6,7 @@ dgc_status 配下のプロパティの意味は公式 DAIKIN Smart App の空気
 実機 (MCK706A / FW 3_15_0) で書き込んで確認したもの。
 """
 
+import json
 import math
 from collections.abc import Sequence
 from enum import StrEnum
@@ -121,11 +122,13 @@ class DaikinClient:
             raise DaikinError(f"HTTP {resp.status_code} from {url}: {resp.text[:200]}")
         # JSON の復号は、応答の encoding に従う requests に任せる (pydantic の JSON パーサーは UTF-8 だけを読む)。
         # 復号の失敗は requests.JSONDecodeError に限らず ValueError (桁数の上限を超える整数等) で届き、
-        # ValidationError も ValueError の派生なので、ValueError で両方を受ける。
+        # ValidationError と UnicodeEncodeError も ValueError の派生なので、ValueError でまとめて受ける。
         try:
             payload = resp.json(
                 parse_float=_parse_finite_float, parse_constant=_parse_finite_float
             )
+            # UTF-8 で表せない孤立した surrogate を含む値は、API の応答に直列化できずに 500 になるので受け付けない。
+            json.dumps(payload, ensure_ascii=False).encode()
             return MultireqResponse.model_validate(payload, strict=True).responses
         except ValueError as err:
             raise DaikinError(
@@ -344,11 +347,10 @@ def _current_humidify(status: PropertyTree) -> bool:
 
 def _raise_for_rsc(resp: dict[str, Any], *, what: str) -> None:
     rsc = resp.get("rsc")
-    if rsc is None:
-        return
-    # "2000" や true (bool は int の派生) を結果コードとして DaikinError.rsc (int) に載せないよう、JSON の整数以外は形の不正として扱う。
+    # 結果コードが無い応答は、本体が成功を報告していないので失敗とする。"2000" や true (bool は int の派生) を
+    # 結果コードとして DaikinError.rsc (int) に載せないよう、JSON の整数以外は形の不正として扱う。
     if type(rsc) is not int:
-        raise DaikinError(f"{what} returned a non-integer rsc: {rsc!r}")
+        raise DaikinError(f"{what} returned no integer rsc: {rsc!r}")
     if rsc not in RSC_SUCCESS:
         raise DaikinError(f"{what} returned rsc={rsc}", rsc=rsc)
 

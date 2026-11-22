@@ -7,7 +7,7 @@ API の仕様・プロパティ対応表・実機で確認した挙動は README
 
 - 初回は `mise trust` でこのディレクトリの `mise.toml` を信頼してから `mise install` する。
 - `mise install`: ツールのインストール、`uv sync --locked`、git hooks (pre-commit / pre-push / commit-msg / pre-merge-commit) のセットアップ。旧 pre-commit (`make precommit-install`) の hook が残る clone では `mise exec -- prek install --force` で置き換える。
-- `mise run test`: coverage 付き pytest。オフラインで完結し、実機には触れない。
+- `mise run test`: coverage 付き pytest (xdist で並列)。オフラインで完結し、実機には触れない。
 - `mise run format`: リポジトリ全体の import の並べ替えと ruff format。commit 時の `ruff-isort` / `ruff-format` hook は commit するファイルだけを整形する。
 - `mise run lint`: ruff check / ruff format --check / lint-imports / ty check / pyright。pre-commit の `lint` hook も同じ task を呼ぶ。
 - `mise run pre-commit`: pre-commit stage の hook (dprint、actionlint、zizmor、hadolint、typos、ruff の整形 / lint、gitleaks 等) を全追跡ファイルに実行する。整形する hook は全追跡ファイルを書き換えうるので、実行後は差分を確かめる。Python だけの検証は `mise run lint` と `mise run test` で足りる。CI の `prek` job の `Run prek` step と同じ検証 (commit-msg stage の commitlint は含まず、zizmor の online audit は token があるときだけ走る)。`test` hook は pre-push で `mise run test` を実行する。
@@ -19,7 +19,7 @@ API の仕様・プロパティ対応表・実機で確認した挙動は README
 
 - `src/daikin/`: dsiot クライアント (FastAPI 非依存)。`protocol.py` (multireq 本文・デコーダ・PropertyTree)、`models.py`、`client.py` (アドレス・プロパティパス・wire 値・高レベル API)、`exceptions.py`。
 - `src/api/`: FastAPI 層 (`routes.py` / `schemas.py` / `service.py`)。`src/main.py` が例外 → HTTP status の対応を持つ。
-- `tests/`: `src` をミラーしたオフライン単体テスト。
+- `tests/`: 機能ごとの e2e テスト。xdist の worker ごとに、`main:app` を包んだ `tests/asgi_probe.py` を uvicorn で subprocess として起動し、`/dsiot/multireq` を話す fake の空気清浄機 (`tests/harness.py`) につなぐ。入力の全域で成り立つ契約は Hypothesis の property で書く。src の内部を直接 import・patch しない。
 - 層の依存は `pyproject.toml` の `[tool.importlinter]` が `api`・`daikin` の中を検査する (`src` 直下の `main.py`・`settings.py` 自身の import は対象外で、`main.py` は fastapi を import する)。`daikin` は `api`・`main`・`settings` に依存しない。層は上から `api`: `routes` → `schemas` | `service`、`daikin`: `client` → `protocol` | `models` → `exceptions` で、上の層は下の層を (間の層を飛ばしても) import でき、下から上と `|` で並べた同じ層どうしは import できない。`api`・`daikin` の中で fastapi を直接 import できるのは `api`、requests は `daikin.client` だけ。`api`・`daikin` の直下にモジュールを足したら、`exhaustive = true` の契約の `layers` にも足す。
 - 新しいプロパティを公開するときは `client.py` にプロパティパスの定数と `tree.decode(パス, decoder=...)` の 1 行、`models.py` に対応するフィールドを足す。
 
